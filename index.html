@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Guide to the Shielded Network — Zcash Architecture &amp; Addresses</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <!-- ============ HEADER / HERO ============ -->
+    <header class="hero">
+      <div class="hero-mark" aria-hidden="true">
+        <img class="hero-image" src="/ZcashGH-Residency01/zec.jfif" alt="Zcash Logo">
+      </div>
+      <div class="hero-text">
+        <p class="hero-kicker">A field guide for people new to Zcash</p>
+        <h1>How the shielded network actually fits together</h1>
+        <p class="hero-sub">Zcash lets you send money the way you'd hand someone cash — privately. This guide walks
+          through where the technology came from, how a payment travels from your wallet to the network, which software
+          keeps the ledger honest, and how to read a Zcash address on sight.</p>
+      </div>
+    </header>
+
+    <!-- ============ NAV ============ -->
+    <nav class="tabs" aria-label="Guide sections">
+      <button class="tab active" data-tab="timeline">
+        <span class="tab-num">1</span><span>Origins timeline</span>
+      </button>
+      <button class="tab" data-tab="architecture">
+        <span class="tab-num">2</span><span>Network architecture</span>
+      </button>
+      <button class="tab" data-tab="nodes">
+        <span class="tab-num">3</span><span>Full-node comparison</span>
+      </button>
+      <button class="tab" data-tab="address">
+        <span class="tab-num">4</span><span>Address identifier</span>
+      </button>
+      <button class="tab" data-tab="resources">
+        <span class="tab-num">5</span><span>Learning resources</span>
+      </button>
+    </nav>
+
+    <main class="panels">
+
+      <!-- ============ 1. TIMELINE ============ -->
+      <section class="panel active" id="timeline">
+        <h2>From two research papers to a live network</h2>
+        <p class="panel-intro">Zcash didn't start as a company — it started as an unsolved problem in academic
+          cryptography: can you prove a payment is valid without revealing anything about it? Drag or click through the
+          milestones below.</p>
+
+        <div class="timeline" id="timelineTrack">
+          <div class="timeline-line" aria-hidden="true"></div>
+          <!-- markers injected by JS -->
+        </div>
+
+        <div class="timeline-detail" id="timelineDetail"></div>
+      </section>
+
+      <!-- ============ 2. ARCHITECTURE ============ -->
+      <section class="panel" id="architecture">
+        <h2>Three layers, one payment</h2>
+        <p class="panel-intro">No single piece of software does everything. A payment passes through three distinct
+          kinds of participant, each with a narrower job than the last.</p>
+
+        <div class="diagram" id="archDiagram">
+          <div class="arch-node" data-node="fullnode">
+            <div class="arch-icon">⛓</div>
+            <h3>Full node</h3>
+            <p class="arch-role">Zebra · Zakura</p>
+          </div>
+          <div class="arch-flow" aria-hidden="true">
+            <svg viewBox="0 0 100 24" preserveAspectRatio="none">
+              <line x1="2" y1="12" x2="98" y2="12" />
+            </svg>
+            <span class="flow-label">compact blocks</span>
+          </div>
+          <div class="arch-node" data-node="indexer">
+            <div class="arch-icon">⇄</div>
+            <h3>Light-client / indexer</h3>
+            <p class="arch-role">lightwalletd · Zaino</p>
+          </div>
+          <div class="arch-flow" aria-hidden="true">
+            <svg viewBox="0 0 100 24" preserveAspectRatio="none">
+              <line x1="2" y1="12" x2="98" y2="12" />
+            </svg>
+            <span class="flow-label">balances &amp; proofs</span>
+          </div>
+          <div class="arch-node" data-node="wallet">
+            <div class="arch-icon">◈</div>
+            <h3>Wallet / application</h3>
+            <p class="arch-role">Zashi · Ywallet · exchanges</p>
+          </div>
+        </div>
+
+        <div class="arch-detail" id="archDetail">
+          <p>Click a layer above to see its role, or read the explanation below — the diagram shows both directions data
+            actually travels.</p>
+        </div>
+
+        <div class="arch-explain">
+          <h3>Reading the flow</h3>
+          <ul>
+            <li><strong>Downstream (node → indexer → wallet):</strong> the full node validates and stores every block.
+              The indexer repackages that history into a lightweight stream a phone can handle. The wallet pulls that
+              stream and uses its own keys, locally, to work out which incoming transactions belong to it.</li>
+            <li><strong>Upstream (wallet → indexer → node):</strong> when you send funds, your wallet builds and signs
+              the transaction itself, then hands it to the indexer, which forwards it to a full node to be checked
+              against consensus rules and broadcast to the peer-to-peer network.</li>
+            <li><strong>Why split the job at all:</strong> a full node's only concern is enforcing consensus correctly.
+              An indexer's only concern is serving that data efficiently. Because the split is clean, a bug or slowdown
+              in the indexer layer never puts the ledger itself at risk.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 3. NODE COMPARISON ============ -->
+      <section class="panel" id="nodes">
+        <h2>Zebra vs. Zakura</h2>
+        <p class="panel-intro">The original <code>zcashd</code> node reached end of life in 2026. Its replacement is
+          <strong>Zebra</strong>, the Zcash Foundation's from-scratch implementation — and <strong>Zakura</strong>, a
+          newer independent fork of Zebra built for much higher throughput. Both speak the same consensus rules, so they
+          interoperate on the same network.
+        </p>
+
+        <div class="node-compare" id="nodeCompare"></div>
+
+        <div class="node-benefits">
+          <h3>Why run a full node at all, on either implementation</h3>
+          <ul>
+            <li>You verify the entire chain yourself instead of trusting someone else's copy of it.</li>
+            <li>You can run your own light-client indexer and wallet backend without depending on a third party.</li>
+            <li>You strengthen the peer-to-peer network's resilience and decentralization simply by relaying blocks.
+            </li>
+            <li>It's a prerequisite for mining infrastructure and for services like block explorers.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============ 4. ADDRESS IDENTIFIER ============ -->
+      <section class="panel" id="address">
+        <h2>What kind of address is this?</h2>
+        <p class="panel-intro">Paste any Zcash address to see its format and what it does — and doesn't — reveal
+          on-chain.</p>
+
+        <div class="security-note">
+          <strong>This tool only reads the text you type.</strong> It never asks for, stores, or transmits a private
+          key, seed phrase, or spending key — and it never will. Don't paste those anywhere, including here.
+        </div>
+
+        <div class="address-tool">
+          <label for="addressInput">Zcash address</label>
+          <input type="text" id="addressInput" placeholder="e.g. t1..., zs1..., or u1..." autocomplete="off"
+            spellcheck="false" inputmode="text">
+          <div class="address-result" id="addressResult">
+            <p class="result-placeholder">Start typing — the format is detected as you go.</p>
+          </div>
+        </div>
+
+        <div class="address-legend">
+          <h3>The four formats this tool recognizes</h3>
+          <div class="legend-grid" id="legendGrid"></div>
+        </div>
+      </section>
+
+      <!-- ============ 5. RESOURCES ============ -->
+      <section class="panel" id="resources">
+        <h2>Keep going</h2>
+        <p class="panel-intro">This guide is a starting point. These are the sources worth bookmarking next.</p>
+        <div class="resources-grid" id="resourcesGrid"></div>
+      </section>
+
+    </main>
+
+    <footer class="site-footer">
+      <p>Educational reference only — not financial or security advice. Verify anything critical against the linked
+        primary sources.</p>
+    </footer>
+
+  </div>
+
+
+
+  <!--
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f"><path d="m321-80-71-71 329-329-329-329 71-71 400 400L321-80Z"/></svg> -->
+
+  <div title="Autor" class="autor">
+
+    <div class="abs">
+      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f">
+        <path d="m336-280-56-56 144-144-144-143 56-56 144 144 143-144 56 56-144 143 144 144-56 56-143-144-144 144Z" />
+      </svg>
+    </div>
+    <img src="/ZcashGH-Residency01/keoshua.png" alt="Keoshua" class="">
+
+  </div>
+
+
+  <div class="arrow">
+    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f">
+      <path d="M400-80 0-480l400-400 71 71-329 329 329 329-71 71Z" />
+    </svg>
+    <h4 class="autorText">Autor</h4>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+
+</html>
