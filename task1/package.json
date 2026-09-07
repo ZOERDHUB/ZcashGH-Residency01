@@ -1,0 +1,12 @@
+{
+  "name": "module1-bitcoin-fundamentals",
+  "version": "1.0.0",
+  "description": "Blockchain fundamentals task 1",
+  "license": "ISC",
+  "author": "Akwenuke Elohona Daniel",
+  "type": "commonjs",
+  "main": "ZDR-001.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
