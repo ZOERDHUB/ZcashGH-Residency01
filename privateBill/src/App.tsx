@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { convertFiatToZec, type ConversionRates, type Currency } from './conversion'
 import { fetchConversionRates } from './market'
 import { DemoBankProvider, type Bank, type ProviderType } from './banks'
+import { createTransactionOrder, type TransactionOrder } from './orders'
 
 type CurrencyMeta = { name: string; symbol: string; flag: string; country: string }
 type BankDetails = { accountNumber: string; accountName: string; bankName: string; bankCode: string; country: string; currency: Currency }
-type Step = 1 | 2 | 3
+type Step = 1 | 2 | 3 | 4
 
 const CURRENCIES: Record<Currency, CurrencyMeta> = {
   NGN: { name: 'Nigerian Naira', symbol: '₦', flag: '🇳🇬', country: 'Nigeria' },
@@ -41,6 +42,7 @@ function App() {
   const [bankLoadError, setBankLoadError] = useState('')
   const bankProvider = useMemo(() => new DemoBankProvider(), [])
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [order, setOrder] = useState<TransactionOrder | null>(null)
 
   const loadRates = useCallback(async () => {
     setLoadingRates(true); setRateError('')
@@ -143,7 +145,7 @@ function App() {
 
         <section className="card-wrap" aria-label="Private Bill payment flow">
           <div className="exchange-card">
-            <div className="flow-progress"><div className="flow-progress-line"><span style={{ width: `${((step - 1) / 2) * 100}%` }} /></div><div className="flow-step"><b className={step >= 1 ? 'done' : ''}>{step > 1 ? '✓' : '1'}</b><span>Amount</span></div><div className="flow-step"><b className={step >= 2 ? 'done' : ''}>{step > 2 ? '✓' : '2'}</b><span>Recipient</span></div><div className="flow-step"><b className={step >= 3 ? 'done' : ''}>{step >= 3 ? '✓' : '3'}</b><span>Review</span></div></div>
+            <div className="flow-progress four"><div className="flow-progress-line"><span style={{ width: `${((step - 1) / 3) * 100}%` }} /></div><div className="flow-step"><b className={step >= 1 ? 'done' : ''}>{step > 1 ? '✓' : '1'}</b><span>Amount</span></div><div className="flow-step"><b className={step >= 2 ? 'done' : ''}>{step > 2 ? '✓' : '2'}</b><span>Recipient</span></div><div className="flow-step"><b className={step >= 3 ? 'done' : ''}>{step > 3 ? '✓' : '3'}</b><span>Review</span></div><div className="flow-step"><b className={step >= 4 ? 'done' : ''}>{step >= 4 ? '✓' : '4'}</b><span>Order</span></div></div>
 
             {step === 1 && <>
               <div className="card-head"><div><span className="kicker">STEP 1 OF 3</span><h2>Recipient gets</h2></div></div>
@@ -182,7 +184,25 @@ function App() {
               <div className="review-zec"><div><span>Required ZEC</span><strong>{conversion ? `${formatZec(conversion.zecAmount)} ZEC` : '—'}</strong></div><span>Live quote · updated {lastUpdated}</span></div>
               <div className="review-list"><div><span>Recipient gets</span><strong>{formatFiat(numericAmount, currency)}</strong></div><div><span>Exchange rate</span><strong>{conversion ? `1 ZEC ≈ ${selected.symbol}${formatRate(conversion.fiatPerZec, currency)}` : '—'}</strong></div><div><span>ZEC / USD</span><strong>{rates ? formatUsd(rates.zecUsd) : '—'}</strong></div><div><span>Bank / provider</span><strong>{bank.bankName}</strong></div><div><span>Account name</span><strong>{bank.accountName}</strong></div><div><span>Account number</span><strong>{maskAccount(bank.accountNumber)}</strong></div><div><span>Destination</span><strong>{selected.country} · {currency}</strong></div><div><span>Fees</span><strong>Not added in this stage</strong></div></div>
               <div className="review-warning"><span>!</span><p>Review carefully before continuing. No order, bank transfer, or ZEC transaction is created or initiated by this screen.</p></div>
-              <div className="button-row"><button className="secondary" onClick={() => setStep(2)}>← Edit details</button><button className="primary" onClick={() => showToast('Transaction reviewed — ready for order creation.')}>Confirm & continue <span>→</span></button></div>
+              <div className="button-row"><button className="secondary" onClick={() => setStep(2)}>← Edit details</button><button className="primary" onClick={() => {
+                if (!conversion) return showToast('Live ZEC quote is unavailable.')
+                const created = createTransactionOrder({
+                  fiatCurrency: currency,
+                  fiatAmount: numericAmount,
+                  requiredZec: conversion.zecAmount,
+                  recipient: { providerName: bank.bankName, providerCode: bank.bankCode, providerType: 'payment_provider', accountNumber: bank.accountNumber, accountName: bank.accountName, country: bank.country, currency: bank.currency },
+                })
+                setOrder(created)
+                setStep(4)
+              }}>Confirm & create order <span>→</span></button></div>
+            </>}
+
+            {step === 4 && order && <>
+              <div className="card-head details-head"><div><span className="kicker">ORDER CREATED</span><h2>Payment order is ready</h2><p className="subhead">Your transaction has been created and is now waiting for ZEC payment.</p></div><span className="secure-chip">✓ {order.status}</span></div>
+              <div className="order-success"><span>ORDER ID</span><strong>{order.id}</strong><small>Keep this ID to track the transaction.</small></div>
+              <div className="review-list"><div><span>Status</span><strong>{order.status}</strong></div><div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>Required ZEC</span><strong>{formatZec(order.requiredZec)} ZEC</strong></div><div><span>Recipient</span><strong>{order.recipient.accountName}</strong></div><div><span>Provider</span><strong>{order.recipient.providerName}</strong></div><div><span>Account</span><strong>{maskAccount(order.recipient.accountNumber)}</strong></div><div><span>Created</span><strong>{new Date(order.createdAt).toLocaleString()}</strong></div><div><span>Expires</span><strong>{new Date(order.expiresAt).toLocaleString()}</strong></div></div>
+              <div className="review-warning"><span>✓</span><p>The order is persistent in this demo and begins in <strong>AWAITING_ZEC</strong>. The next stage can retrieve it using the order ID.</p></div>
+              <button className="primary" onClick={() => showToast(`Order ${order.id} is ready for the ZEC payment stage.`)}>Continue to payment <span>→</span></button>
             </>}
           </div>
           <div className="card-foot"><span>🔒</span> Privacy-first flow · Recipient data is kept in memory for the current flow</div>
@@ -190,7 +210,7 @@ function App() {
       </main>
 
       <section className="feature-strip"><div><span className="feature-icon">◎</span><div><strong>Guided flow</strong><p>Amount → recipient → review.</p></div></div><div><span className="feature-icon">⌁</span><div><strong>Clear validation</strong><p>Errors appear beside the field that needs attention.</p></div></div><div><span className="feature-icon">◈</span><div><strong>Privacy by design</strong><p>No unnecessary sensitive data is exposed.</p></div></div></section>
-      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 04 · Transaction Review</span></footer>
+      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 05 · Transaction Orders</span></footer>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )

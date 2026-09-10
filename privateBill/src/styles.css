@@ -8,3 +8,10 @@
 .bank-option small { display:block; margin-top:3px; color:#7f8799; font-size:11px; }
 
 .review-list strong{max-width:62%;overflow-wrap:anywhere}.review-list div:last-child strong{color:#9da3ae}.review-warning p{line-height:1.6}.details-head .subhead{max-width:420px}
+.flow-progress.four{grid-template-columns:repeat(4,1fr)}
+.flow-progress.four .flow-progress-line{left:10%;right:10%}
+.order-success{margin:8px 0 8px;padding:20px;border:1px solid rgba(169,214,60,.18);background:rgba(169,214,60,.045);border-radius:16px;text-align:center}
+.order-success span{display:block;color:#777e8e;font:9px 'DM Mono',monospace;letter-spacing:.12em}
+.order-success strong{display:block;margin:8px 0 5px;color:#f6c600;font:700 18px 'DM Mono',monospace;word-break:break-all}
+.order-success small{color:#777e8e;font-size:9px}
+@media(max-width:640px){.flow-progress.four{grid-template-columns:repeat(4,1fr);gap:3px}.flow-progress.four .flow-step{font-size:7px}.flow-progress.four .flow-step b{width:25px;height:25px}}

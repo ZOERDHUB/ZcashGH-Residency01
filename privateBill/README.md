@@ -1,43 +1,48 @@
-# Private Bill — Quest 03
+# Private Bill — Quest 05
 
-## Build Recipient Bank Details Form
+## Create Transaction Orders
 
-Quest 03 extends Private Bill with a recipient bank-details stage after the NGN/GHS amount and live ZEC quote are known.
+Quest 05 adds the order-management foundation to Private Bill. After the user confirms the transaction review, the application creates a persistent transaction order that can be identified and retrieved by the next payment stage.
 
 ### Included
-- Nigeria and Ghana recipient country/currency flow
-- Searchable bank selector with curated demo data for both markets
-- Normalized bank model including bank code
-- Account number and account-name validation
-- Selected bank code retained in transaction state for the next stage
-- Review screen with masked account number
-- State is kept in React memory only; no localStorage and no sensitive console logging
-- Live ZEC conversion from Quest 02 is preserved
-- Responsive, keyboard-friendly interaction patterns
+- Unique order identifier (`PB-...`)
+- Fiat currency and recipient amount
+- Required ZEC amount from the live conversion quote
+- Recipient payment information including provider, provider code, account number, account name, country and currency
+- Initial transaction status: `AWAITING_ZEC`
+- Creation timestamp
+- 30-minute expiration timestamp
+- Persistent order storage for the demo using browser `localStorage`
+- Order retrieval helpers in `src/orders.ts`
+- Final order-created screen with order ID and status
+- Masked account number in the order UI
+- Existing Quest 02–04 functionality preserved
 
-### Production API architecture
-The UI is intentionally separated from the bank provider. `BankProvider` exposes `listBanks(country)` and `ApiBankProvider` expects a backend endpoint such as `/api/banks?country=NG|GH`.
+### Order model
 
-A backend adapter can call Paystack or Flutterwave and normalize the response to the local `Bank` type. **Never expose a Paystack/Flutterwave secret key in the browser.**
+```text
+TransactionOrder
+├── id
+├── fiatCurrency
+├── fiatAmount
+├── requiredZec
+├── recipient
+│   ├── providerName
+│   ├── providerCode
+│   ├── providerType
+│   ├── accountNumber
+│   ├── accountName
+│   ├── country
+│   └── currency
+├── status
+├── createdAt
+└── expiresAt
+```
 
-The included `DemoBankProvider` makes the quest fully previewable without credentials or a live payment account. Replace it with `ApiBankProvider` when the project has a secure backend/serverless endpoint.
+New orders begin in `AWAITING_ZEC`.
 
-### Scope / security
-This quest does not initiate bank transfers, ZEC transactions, account resolution, or custody. No API credentials, private keys, seed phrases, or real funds are used.
+### Persistence and production note
 
-### Financial provider coverage
+For this frontend quest foundation, orders are persisted in browser `localStorage` so the next stage can retrieve an order by ID after creation. This is suitable for a local/demo implementation only. A production deployment should move order persistence to a secure backend/database, avoid storing sensitive recipient data in browser storage, and enforce server-side authorization, status transitions, expiration and audit controls.
 
-The Quest 03 demo directory now covers three recipient destination categories for Nigeria and Ghana:
-
-- Traditional banks
-- Fintech / digital banking providers such as OPay, PalmPay, Moniepoint, Kuda and Carbon in Nigeria
-- Mobile-money / wallet providers such as MTN MoMo, Telecel Cash, AT Money, G-Money and Zeepay in Ghana, plus additional fintech coverage
-
-These are demo directory entries, not claims that every provider is supported by the eventual transfer/verification rail. A production implementation should source the live provider directory from a server-side payment provider and normalize its response into the `Bank` type. Provider credentials must remain server-side.
-
-
-## Quest 04 — Build Transaction Review
-
-This stage gives the user a final review of the Private Bill transaction before an order is created. The review displays the recipient fiat amount, required ZEC, live exchange-rate information, destination provider, masked account number, account name, country/currency, and the fee status available in the current application.
-
-The user can return to the recipient-details step and correct information before using the **Confirm & continue** action. This quest does not create an order, initiate a bank transfer, or submit a ZEC transaction.
+No real bank transfer or ZEC transaction is executed by this quest.
