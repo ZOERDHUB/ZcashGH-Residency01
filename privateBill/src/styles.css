@@ -6,3 +6,5 @@
 .bank-group + .bank-group { border-top: 1px solid rgba(255,255,255,.07); }
 .bank-group-label { padding: 10px 14px 7px; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #7f8799; }
 .bank-option small { display:block; margin-top:3px; color:#7f8799; font-size:11px; }
+
+.review-list strong{max-width:62%;overflow-wrap:anywhere}.review-list div:last-child strong{color:#9da3ae}.review-warning p{line-height:1.6}.details-head .subhead{max-width:420px}

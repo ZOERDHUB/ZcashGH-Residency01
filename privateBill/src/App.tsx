@@ -179,10 +179,10 @@ function App() {
             {step === 3 && <>
               <div className="card-head details-head"><div><span className="kicker">STEP 3 OF 3</span><h2>Review before sending</h2><p className="subhead">Check the details below. The next stage can use this transaction data.</p></div><span className="secure-chip">✓ Ready</span></div>
               <div className="review-amount"><span>Recipient receives</span><strong>{formatFiat(numericAmount, currency)}</strong><small>{selected.flag} {selected.name}</small></div>
-              <div className="review-zec"><div><span>Estimated ZEC required</span><strong>{conversion ? `${formatZec(conversion.zecAmount)} ZEC` : '—'}</strong></div><span>Live quote · updated {lastUpdated}</span></div>
-              <div className="review-list"><div><span>Bank</span><strong>{bank.bankName}</strong></div><div><span>Account name</span><strong>{bank.accountName}</strong></div><div><span>Account number</span><strong>{maskAccount(bank.accountNumber)}</strong></div><div><span>Country</span><strong>{selected.country} · {currency}</strong></div></div>
-              <div className="review-warning"><span>!</span><p>This is a review screen only. No bank transfer or ZEC transaction has been initiated.</p></div>
-              <div className="button-row"><button className="secondary" onClick={() => setStep(2)}>← Edit details</button><button className="primary" onClick={() => showToast('Review complete — ready for the next transaction stage.')}>Continue <span>→</span></button></div>
+              <div className="review-zec"><div><span>Required ZEC</span><strong>{conversion ? `${formatZec(conversion.zecAmount)} ZEC` : '—'}</strong></div><span>Live quote · updated {lastUpdated}</span></div>
+              <div className="review-list"><div><span>Recipient gets</span><strong>{formatFiat(numericAmount, currency)}</strong></div><div><span>Exchange rate</span><strong>{conversion ? `1 ZEC ≈ ${selected.symbol}${formatRate(conversion.fiatPerZec, currency)}` : '—'}</strong></div><div><span>ZEC / USD</span><strong>{rates ? formatUsd(rates.zecUsd) : '—'}</strong></div><div><span>Bank / provider</span><strong>{bank.bankName}</strong></div><div><span>Account name</span><strong>{bank.accountName}</strong></div><div><span>Account number</span><strong>{maskAccount(bank.accountNumber)}</strong></div><div><span>Destination</span><strong>{selected.country} · {currency}</strong></div><div><span>Fees</span><strong>Not added in this stage</strong></div></div>
+              <div className="review-warning"><span>!</span><p>Review carefully before continuing. No order, bank transfer, or ZEC transaction is created or initiated by this screen.</p></div>
+              <div className="button-row"><button className="secondary" onClick={() => setStep(2)}>← Edit details</button><button className="primary" onClick={() => showToast('Transaction reviewed — ready for order creation.')}>Confirm & continue <span>→</span></button></div>
             </>}
           </div>
           <div className="card-foot"><span>🔒</span> Privacy-first flow · Recipient data is kept in memory for the current flow</div>
@@ -190,7 +190,7 @@ function App() {
       </main>
 
       <section className="feature-strip"><div><span className="feature-icon">◎</span><div><strong>Guided flow</strong><p>Amount → recipient → review.</p></div></div><div><span className="feature-icon">⌁</span><div><strong>Clear validation</strong><p>Errors appear beside the field that needs attention.</p></div></div><div><span className="feature-icon">◈</span><div><strong>Privacy by design</strong><p>No unnecessary sensitive data is exposed.</p></div></div></section>
-      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 03 · Recipient Bank Details</span></footer>
+      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 04 · Transaction Review</span></footer>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )

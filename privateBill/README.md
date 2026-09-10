@@ -34,3 +34,10 @@ The Quest 03 demo directory now covers three recipient destination categories fo
 - Mobile-money / wallet providers such as MTN MoMo, Telecel Cash, AT Money, G-Money and Zeepay in Ghana, plus additional fintech coverage
 
 These are demo directory entries, not claims that every provider is supported by the eventual transfer/verification rail. A production implementation should source the live provider directory from a server-side payment provider and normalize its response into the `Bank` type. Provider credentials must remain server-side.
+
+
+## Quest 04 — Build Transaction Review
+
+This stage gives the user a final review of the Private Bill transaction before an order is created. The review displays the recipient fiat amount, required ZEC, live exchange-rate information, destination provider, masked account number, account name, country/currency, and the fee status available in the current application.
+
+The user can return to the recipient-details step and correct information before using the **Confirm & continue** action. This quest does not create an order, initiate a bank transfer, or submit a ZEC transaction.
