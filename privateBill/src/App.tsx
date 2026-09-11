@@ -6,7 +6,7 @@ import { createTransactionOrder, type TransactionOrder } from './orders'
 
 type CurrencyMeta = { name: string; symbol: string; flag: string; country: string }
 type BankDetails = { accountNumber: string; accountName: string; bankName: string; bankCode: string; country: string; currency: Currency }
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2 | 3 | 4 | 5
 
 const CURRENCIES: Record<Currency, CurrencyMeta> = {
   NGN: { name: 'Nigerian Naira', symbol: '₦', flag: '🇳🇬', country: 'Nigeria' },
@@ -15,6 +15,7 @@ const CURRENCIES: Record<Currency, CurrencyMeta> = {
 
 const MIN_AMOUNT: Record<Currency, number> = { NGN: 100, GHS: 1 }
 const ZEC_DECIMALS = 6
+const ZEC_RECEIVING_ADDRESS = import.meta.env.VITE_ZEC_RECEIVING_ADDRESS || 't1PrivateBillDemoAddressReplaceMe'
 
 function formatFiat(value: number, currency: Currency) {
   return `${CURRENCIES[currency].symbol}${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)}`
@@ -43,6 +44,7 @@ function App() {
   const bankProvider = useMemo(() => new DemoBankProvider(), [])
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [order, setOrder] = useState<TransactionOrder | null>(null)
+  const [addressCopied, setAddressCopied] = useState(false)
 
   const loadRates = useCallback(async () => {
     setLoadingRates(true); setRateError('')
@@ -145,7 +147,7 @@ function App() {
 
         <section className="card-wrap" aria-label="Private Bill payment flow">
           <div className="exchange-card">
-            <div className="flow-progress four"><div className="flow-progress-line"><span style={{ width: `${((step - 1) / 3) * 100}%` }} /></div><div className="flow-step"><b className={step >= 1 ? 'done' : ''}>{step > 1 ? '✓' : '1'}</b><span>Amount</span></div><div className="flow-step"><b className={step >= 2 ? 'done' : ''}>{step > 2 ? '✓' : '2'}</b><span>Recipient</span></div><div className="flow-step"><b className={step >= 3 ? 'done' : ''}>{step > 3 ? '✓' : '3'}</b><span>Review</span></div><div className="flow-step"><b className={step >= 4 ? 'done' : ''}>{step >= 4 ? '✓' : '4'}</b><span>Order</span></div></div>
+            <div className="flow-progress five"><div className="flow-progress-line"><span style={{ width: `${((step - 1) / 4) * 100}%` }} /></div><div className="flow-step"><b className={step >= 1 ? 'done' : ''}>{step > 1 ? '✓' : '1'}</b><span>Amount</span></div><div className="flow-step"><b className={step >= 2 ? 'done' : ''}>{step > 2 ? '✓' : '2'}</b><span>Recipient</span></div><div className="flow-step"><b className={step >= 3 ? 'done' : ''}>{step > 3 ? '✓' : '3'}</b><span>Review</span></div><div className="flow-step"><b className={step >= 4 ? 'done' : ''}>{step >= 4 ? '✓' : '4'}</b><span>Order</span></div><div className="flow-step"><b className={step >= 5 ? 'done' : ''}>{step >= 5 ? '✓' : '5'}</b><span>Pay ZEC</span></div></div>
 
             {step === 1 && <>
               <div className="card-head"><div><span className="kicker">STEP 1 OF 3</span><h2>Recipient gets</h2></div></div>
@@ -202,7 +204,17 @@ function App() {
               <div className="order-success"><span>ORDER ID</span><strong>{order.id}</strong><small>Keep this ID to track the transaction.</small></div>
               <div className="review-list"><div><span>Status</span><strong>{order.status}</strong></div><div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>Required ZEC</span><strong>{formatZec(order.requiredZec)} ZEC</strong></div><div><span>Recipient</span><strong>{order.recipient.accountName}</strong></div><div><span>Provider</span><strong>{order.recipient.providerName}</strong></div><div><span>Account</span><strong>{maskAccount(order.recipient.accountNumber)}</strong></div><div><span>Created</span><strong>{new Date(order.createdAt).toLocaleString()}</strong></div><div><span>Expires</span><strong>{new Date(order.expiresAt).toLocaleString()}</strong></div></div>
               <div className="review-warning"><span>✓</span><p>The order is persistent in this demo and begins in <strong>AWAITING_ZEC</strong>. The next stage can retrieve it using the order ID.</p></div>
-              <button className="primary" onClick={() => showToast(`Order ${order.id} is ready for the ZEC payment stage.`)}>Continue to payment <span>→</span></button>
+              <button className="primary" onClick={() => { setAddressCopied(false); setStep(5) }}>Continue to payment <span>→</span></button>
+            </>}
+
+            {step === 5 && order && <>
+              <div className="card-head details-head"><div><span className="kicker">STEP 5 · ZEC PAYMENT</span><h2>Fund your transaction</h2><p className="subhead">Send the exact ZEC amount below to the receiving address for this order.</p></div><span className="secure-chip">● {order.status}</span></div>
+              <div className="payment-hero"><span>YOU NEED TO SEND</span><strong>{formatZec(order.requiredZec)} <small>ZEC</small></strong><p>Send exactly this amount. Your payment must fund order <b>{order.id}</b>.</p></div>
+              <div className="payment-address"><div className="payment-address-head"><div><span className="field-label">ZEC RECEIVING ADDRESS</span><small>Payment destination for this transaction</small></div><span className="address-badge">ZEC</span></div><div className="address-row"><code>{ZEC_RECEIVING_ADDRESS}</code><button className="copy-button" onClick={async () => { try { await navigator.clipboard.writeText(ZEC_RECEIVING_ADDRESS); setAddressCopied(true); window.setTimeout(() => setAddressCopied(false), 2200) } catch { showToast('Copy failed. Please copy the address manually.') } }} aria-label="Copy ZEC receiving address">{addressCopied ? '✓ Copied' : 'Copy address'}</button></div></div>
+              <div className="payment-meta"><div><span>Order ID</span><strong>{order.id}</strong></div><div><span>Current status</span><strong>{order.status}</strong></div><div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>Destination</span><strong>{order.recipient.country} · {order.fiatCurrency}</strong></div><div><span>Payment expires</span><strong>{new Date(order.expiresAt).toLocaleString()}</strong></div></div>
+              <div className="payment-instructions"><div className="instruction-icon">1</div><div><strong>Open your Zcash wallet</strong><p>Choose ZEC and prepare a payment to the address shown above.</p></div><div className="instruction-icon">2</div><div><strong>Send the exact amount</strong><p>Send <b>{formatZec(order.requiredZec)} ZEC</b>. Do not send a different amount.</p></div><div className="instruction-icon">3</div><div><strong>Verify before sending</strong><p>Check the receiving address and amount carefully. Blockchain payments may not be reversible.</p></div></div>
+              <div className="payment-warning"><span>!</span><p><strong>Important:</strong> The receiving address above is configured for the Private Bill demo. In production, this address must be generated or assigned securely by the backend for the specific order.</p></div>
+              <div className="button-row"><button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={() => showToast('Payment instructions confirmed. Waiting for ZEC payment.')}>I understand — continue <span>→</span></button></div>
             </>}
           </div>
           <div className="card-foot"><span>🔒</span> Privacy-first flow · Recipient data is kept in memory for the current flow</div>
@@ -210,7 +222,7 @@ function App() {
       </main>
 
       <section className="feature-strip"><div><span className="feature-icon">◎</span><div><strong>Guided flow</strong><p>Amount → recipient → review.</p></div></div><div><span className="feature-icon">⌁</span><div><strong>Clear validation</strong><p>Errors appear beside the field that needs attention.</p></div></div><div><span className="feature-icon">◈</span><div><strong>Privacy by design</strong><p>No unnecessary sensitive data is exposed.</p></div></div></section>
-      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 05 · Transaction Orders</span></footer>
+      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 06 · ZEC Payment Instructions</span></footer>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )
