@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="./JqueryJavaScriptLibryV3.6.0/jquery-3.6.0.js"></script>
+<link rel="stylesheet" href="index.css">
+<title>Zcash Architecture & Address Guide</title></head>
+<body>
+<nav>
+  <h1 class="display">Zcash Architecture Guide</h1>
+  <div class="toggle_div display">
+    <button class="toggle_button"></button>
+    <div class="linebox">
+      <div id="line1" class="line"></div>
+      <div id="line3" class="line "></div>
+      <div id="line2" class="line"></div>
+    </div>
+  </div>
+  <div class="buttons">
+    <button data-tab="timeline" class="active">Origins Timeline</button>
+    <button data-tab="architecture">Network Architecture</button>
+    <button data-tab="nodes">Full-Node Comparison</button>
+    <button data-tab="address">Address Identifier</button>
+    <button data-tab="resources">Learning Resources</button>
+  </div>
+</nav>
+<!-- <div class="nav_menue hide display">
+  <button data-tab="timeline" class="active">Origins Timeline</button>
+  <button data-tab="architecture">Network Architecture</button>
+  <button data-tab="nodes">Full-Node Comparison</button>
+  <button data-tab="address">Address Identifier</button>
+  <button data-tab="resources">Learning Resources</button>
+</div> -->
+
+<header>
+  <h1>Zcash <span>Architecture &amp; Address</span> Guide</h1>
+  <p>A beginner-friendly, interactive walkthrough of how Zcash works — from its research origins to full nodes, wallets, and address types. Built for Task 02 of the Zcash Privacy Developers Residency.</p>
+</header>
+
+<main>
+  <!-- TIMELINE -->
+  <section id="timeline" class="active">
+    <h2>1. Zcash Origins Timeline</h2>
+    <p class="sub">Tap an entry to expand it. <span class="t-hint">(click to open/close)</span></p>
+    <div class="timeline" id="timelineList"></div>
+  </section>
+  <!-- ARCHITECTURE -->
+  <section id="architecture">
+    <h2>2. Zcash Network Architecture</h2>
+    <p class="sub">Tap a stage to see how data moves from the network into your wallet.</p>
+    <div class="card">
+      <div class="arch-flow" id="archFlow"></div>
+      <div class="arch-detail" id="archDetail">Click a stage above to see what it does and why it matters.</div>
+    </div>
+  </section>
+  <!-- NODE COMPARISON -->
+  <section id="nodes">
+    <h2>3. Full-Node Comparison</h2>
+    <p class="sub">Comparing <b>Zebra</b> and <b>Zakura</b> — two consensus-compatible Zcash full-node implementations.</p>
+    <div class="card" style="overflow-x:auto;">
+      <table id="nodeTable"></table>
+    </div>
+    <p class="sub" style="margin-top:-6px;">Note: the task brief referred to this node as "Sakura" — the correct project name is <b>Zakura</b>, a Zebra-derived full node released in July 2026 by Valar Group and Project Tachyon.</p>
+  </section>
+
+  <!-- ADDRESS IDENTIFIER -->
+  <section id="address">
+    <h2>4. Zcash Address Identifier</h2>
+    <p class="sub">Paste a Zcash address to see what <b>format</b> it is. This tool only inspects the address string — it never asks for private keys, seed phrases, or spending keys.</p>
+    <div class="card">
+      <div class="input-row">
+        <input type="text" id="addrInput" placeholder="Paste a Zcash address, e.g. t1..., zs1..., u1..." autocomplete="off" spellcheck="false">
+        <button class="primary" id="checkBtn">Identify</button>
+      </div>
+      <div class="examples" id="examples"></div>
+      <div class="error" id="addrError">Please enter an address to check.</div>
+      <div class="result" id="addrResult"></div>
+      <div class="privacy-note">
+        🔒 <b>Security by design:</b> this app performs client-side format detection only (checking prefixes and structure). It never transmits, stores, or requests any wallet secrets, and it does not connect to the live network.
+      </div>
+    </div>
+  </section>
+
+  <!-- RESOURCES -->
+  <section id="resources">
+    <h2>5. Learning Resources</h2>
+    <p class="sub">Reliable places to go deeper on everything covered in this app.</p>
+    <div class="res-list" id="resList"></div>
+  </section>
+
+</main>
+
+<footer>
+  Built for the Zcash Privacy Developers Residency — Task 02. Not affiliated with an official Zcash product. Educational use only. Built by me resident 008 Akwenuke Daniel.
+</footer>
+<script src="index.js"></script>
+</body>
+</html>
