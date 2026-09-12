@@ -1,0 +1,25 @@
+{
+  "name": "private-bill-q7-v3",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "server": "node server.mjs",
+    "dev:full": "concurrently -k \"npm run dev\" \"npm run server\"",
+    "check": "node --check server.mjs && node --check src/node-config.mjs && node --check src/node-manager.mjs && node --check src/rpc.mjs && node --check src/store.mjs && node --check src/payment-monitor.mjs && node --check src/adapters/zebra.mjs && node --check src/adapters/zakura.mjs",
+    "test": "node scripts-test.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "concurrently": "latest"
+  }
+}
