@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Private Bill — ZEC to NGN/GHS Exchange</title>
+
+  <!-- Bootstrap 5 (vendored locally — see vendor/bootstrap/) -->
+  <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="./css/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<body>
+
+  <div class="page">
+
+    <!-- ===================== HEADER ===================== -->
+    <header class="pb-header">
+      <div class="container">
+        <div class="d-flex align-items-center gap-2">
+          <img src="assets/zec-icon.svg" alt="" width="28" height="28">
+          <span class="pb-wordmark">Private Bill</span>
+          <span class="badge pb-badge-quest ms-2">Quest 4 · Transaction review</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="row justify-content-center">
+        <div class="col-12 col-lg-6 col-xl-5">
+
+          <!-- ===================== STEP 1: EXCHANGE ===================== -->
+          <div id="stepExchange">
+
+            <div class="text-center mb-4 mb-md-5 pb-intro">
+              <h1>Send ZEC. They receive local currency.</h1>
+              <p class="text-secondary">
+                Enter the amount your recipient should receive in Naira or Cedi.
+                We'll show you how much ZEC funds it — this preview doesn't move any funds.
+              </p>
+            </div>
+
+            <!-- ===================== EXCHANGE CARD ===================== -->
+            <div class="card pb-card">
+              <div class="card-body p-3 p-md-4">
+
+                <!-- ---- Recipient gets (fiat, editable) ---- -->
+                <div class="pb-field">
+                  <div class="pb-field-label"><span>Recipient gets</span></div>
+                  <div class="pb-field-row">
+                    <input type="text" inputmode="decimal" class="pb-amount-input" id="fiatAmount" placeholder="0.00"
+                      aria-label="Amount recipient receives" autocomplete="off">
+                    <div class="dropdown pb-currency-dropdown">
+                      <button class="btn pb-currency-btn dropdown-toggle" type="button" id="fiatCurrencyBtn"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                        <span id="fiatFlag">🇳🇬</span>
+                        <span id="fiatCode">NGN</span>
+                      </button>
+                      <ul id="hover-drop" class="dropdown-menu dropdown-menu-end pb-dropdown-menu"
+                        aria-labelledby="fiatCurrencyBtn">
+                        <li><button class="dropdown-item" type="button" data-currency="NGN">🇳🇬 &nbsp;Nigerian Naira —
+                            NGN</button></li>
+                        <li><button class="dropdown-item" type="button" data-currency="GHS">🇬🇭 &nbsp;Ghanaian Cedi —
+                            GHS</button></li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div class="pb-field-sub" id="fiatMinNote">Minimum ₦5,000</div>
+                </div>
+
+                <!-- ---- swap divider ---- -->
+                <div class="pb-divider">
+                  <span class="pb-divider-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 4v16 M6 14l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                </div>
+
+                <!-- ---- You send (ZEC, computed / read-only) ---- -->
+                <div class="pb-field">
+                  <div class="pb-field-label"><span>You send</span></div>
+                  <div class="pb-field-row">
+                    <input type="text" class="pb-amount-input pb-amount-readonly" id="zecAmount"
+                      placeholder="0.00000000" aria-label="ZEC amount to send" readonly>
+                    <div class="pb-currency-btn pb-currency-static">
+                      <img src="assets/zec-icon.svg" alt="" width="18" height="18">
+                      <span>ZEC</span>
+                    </div>
+                  </div>
+                  <div class="pb-field-sub" id="zecUsdNote">&nbsp;</div>
+                </div>
+
+                <!-- ---- rate ticker ---- -->
+                <div class="pb-rate-ticker" id="rateTicker">
+                  <span class="pb-rate-dot" id="rateDot" aria-hidden="true"></span>
+                  <span id="rateText">Fetching live rate…</span>
+                  <button type="button" class="btn btn-sm pb-refresh-btn" id="refreshBtn" title="Refresh rate"
+                    aria-label="Refresh rate">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 12a9 9 0 1 1-3-6.7 M21 4v5h-5" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- ---- rate-unavailable banner (shown only when every live source fails) ---- -->
+                <div class="alert pb-alert-warning d-none" id="rateUnavailableBanner" role="alert">
+                  <span id="rateUnavailableText">
+                    We couldn't reach the exchange-rate service, so no ZEC amount can be
+                    shown right now.
+                  </span>
+                  <button type="button" class="btn btn-sm pb-retry-btn" id="rateRetryBtn">Retry</button>
+                </div>
+
+                <!-- ---- fee / info breakdown ---- -->
+                <div class="pb-breakdown" id="breakdown" hidden>
+                  <div class="pb-breakdown-row">
+                    <span>Service fee (<span id="feePct">1.5</span>%)</span>
+                    <span id="feeRow">—</span>
+                  </div>
+                  <div class="pb-breakdown-row pb-breakdown-total">
+                    <span>Total ZEC required</span>
+                    <span id="totalRow">—</span>
+                  </div>
+                </div>
+
+                <div class="alert pb-alert-error d-none" id="errorBanner" role="alert"></div>
+
+                <button type="button" class=" pb-cta-btn w-100" id="continueBtn" disabled>
+                  Continue
+                </button>
+              </div>
+            </div>
+
+            <p class="pb-disclaimer">
+              This step is a preview only — no deposit address is generated and no
+              funds move yet. ZEC amounts are always computed from a live exchange
+              rate; if the rate service can't be reached, no amount is shown and
+              you'll see a clear notice instead of a guessed figure.
+            </p>
+
+          </div>
+          <!-- ===================== /STEP 1 ===================== -->
+
+          <!-- ===================== STEP 2: RECIPIENT BANK DETAILS ===================== -->
+          <div id="stepBankDetails" class="d-none">
+
+            <div class="text-center mb-4 pb-intro">
+              <h1>Where should the money land?</h1>
+              <p class="text-secondary">
+                Enter the bank account that will receive the payout — this is kept
+                for this session only, and used solely to move to the next step.
+              </p>
+            </div>
+
+            <!-- ---- compact recap of the confirmed exchange ---- -->
+            <div class="pb-recap" id="bankStepRecap">
+              <div>
+                <span class="pb-recap-label">Recipient gets</span>
+                <span class="pb-recap-value" id="recapFiat">—</span>
+              </div>
+              <div>
+                <span class="pb-recap-label">You send</span>
+                <span class="pb-recap-value" id="recapZec">—</span>
+              </div>
+              <button type="button" class=" pb-recap-edit-btn" id="editAmountBtn">Edit amount</button>
+            </div>
+
+            <div class="card pb-card" id="bankFormCard">
+              <div class="card-body p-3 p-md-4">
+
+                <form id="bankDetailsForm" novalidate>
+
+                  <div class="pb-field mb-3">
+                    <div class="pb-field-label"><span>Recipient country</span></div>
+                    <div class="pb-country-chip" id="recipientCountryChip">—</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="bankName" class="pb-form-label">Bank</label>
+                    <select class="form-select pb-form-select" id="bankName" autocomplete="off">
+                      <option value="" selected disabled>Select a bank…</option>
+                    </select>
+                    <div class="invalid-feedback" id="bankNameError"></div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="accountNumber" class="pb-form-label">Account number</label>
+                    <input type="text" inputmode="numeric" class="form-control pb-form-input" id="accountNumber"
+                      placeholder="e.g. 0123456789" autocomplete="off" spellcheck="false">
+                    <div class="invalid-feedback" id="accountNumberError"></div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="accountName" class="pb-form-label">Account name</label>
+                    <input type="text" class="form-control pb-form-input" id="accountName"
+                      placeholder="Full name on the account" autocomplete="off" spellcheck="false">
+                    <div class="invalid-feedback" id="accountNameError"></div>
+                  </div>
+
+                  <div class="alert pb-alert-error d-none" id="bankFormErrorBanner" role="alert"></div>
+
+                  <button type="submit" class=" pb-cta-btn w-100" id="saveRecipientBtn">
+                    Save recipient details
+                  </button>
+                </form>
+
+              </div>
+            </div>
+
+            <!-- ---- shown after successful save, in place of the form ---- -->
+            <div class="card pb-card d-none" id="recipientSavedCard">
+              <div class="card-body p-3 p-md-4">
+                <div class="pb-modal-check mb-3" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4">
+                    <path d="M20 6 9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <h3 class="pb-saved-title">Recipient details saved</h3>
+                <dl class="pb-summary-list">
+                  <div>
+                    <dt>Bank</dt>
+                    <dd id="savedBankName">—</dd>
+                  </div>
+                  <div>
+                    <dt>Account number</dt>
+                    <dd id="savedAccountNumber">—</dd>
+                  </div>
+                  <div>
+                    <dt>Account name</dt>
+                    <dd id="savedAccountName">—</dd>
+                  </div>
+                  <div>
+                    <dt>Country</dt>
+                    <dd id="savedCountry">—</dd>
+                  </div>
+                </dl>
+                <div class="d-flex gap-2 mt-3">
+                  <button type="button" class=" pb-modal-edit-btn flex-fill" id="editRecipientBtn">Edit details</button>
+                  <button type="button" class=" pb-cta-btn flex-fill" id="reviewTransactionBtn">
+                    Review transaction →
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p class="pb-disclaimer">
+              Account number and account name are validated for format only in
+              this step (a real NUBAN checksum for Nigerian accounts, a plausible
+              length for Ghanaian ones) — nothing here confirms the account
+              actually exists or belongs to the name entered. Details are held in
+              memory for this browser session only; nothing is written to
+              persistent storage, and the account number is never written to the
+              console or shown again in full once saved.
+            </p>
+
+          </div>
+          <!-- ===================== /STEP 2 ===================== -->
+
+          <!-- ===================== STEP 3: TRANSACTION REVIEW ===================== -->
+          <div id="stepReview" class="d-none">
+
+            <div class="text-center mb-4 pb-intro">
+              <h1>Review before you continue</h1>
+              <p class="text-secondary">
+                Check every detail below. Nothing is sent and no order is created
+                until you confirm.
+              </p>
+            </div>
+
+            <div class="card pb-card mb-3">
+              <div class="card-body p-3 p-md-4">
+                <div class="pb-review-section-label">Exchange</div>
+                <dl class="pb-summary-list">
+                  <div>
+                    <dt>Fiat currency</dt>
+                    <dd id="reviewCurrency">—</dd>
+                  </div>
+                  <div>
+                    <dt>Recipient gets</dt>
+                    <dd id="reviewFiatAmount">—</dd>
+                  </div>
+                  <div>
+                    <dt>Required ZEC amount</dt>
+                    <dd id="reviewZecAmount">—</dd>
+                  </div>
+                  <div>
+                    <dt>Rate used</dt>
+                    <dd id="reviewRate">—</dd>
+                  </div>
+                  <div>
+                    <dt>Service fee</dt>
+                    <dd id="reviewFee">—</dd>
+                  </div>
+                </dl>
+                <button type="button" class=" pb-modal-edit-btn w-100 mt-2" id="reviewEditAmountBtn">Edit
+                  amount</button>
+              </div>
+            </div>
+
+            <div class="card pb-card mb-3">
+              <div class="card-body p-3 p-md-4">
+                <div class="pb-review-section-label">Recipient</div>
+                <dl class="pb-summary-list">
+                  <div>
+                    <dt>Bank</dt>
+                    <dd id="reviewBankName">—</dd>
+                  </div>
+                  <div>
+                    <dt>Account number</dt>
+                    <dd id="reviewAccountNumber">—</dd>
+                  </div>
+                  <div>
+                    <dt>Account name</dt>
+                    <dd id="reviewAccountName">—</dd>
+                  </div>
+                  <div>
+                    <dt>Country</dt>
+                    <dd id="reviewCountry">—</dd>
+                  </div>
+                </dl>
+                <button type="button" class=" pb-modal-edit-btn w-100 mt-2" id="reviewEditRecipientBtn">Edit
+                  recipient</button>
+              </div>
+            </div>
+
+            <!-- ---- confirm form (not yet confirmed) ---- -->
+            <div id="reviewConfirmSection">
+              <div class="form-check pb-review-check mb-3">
+                <input class="form-check-input" type="checkbox" id="reviewAckCheckbox">
+                <label class="form-check-label" for="reviewAckCheckbox">
+                  I've checked the recipient's bank details and the amounts above.
+                </label>
+              </div>
+              <button type="button" class=" pb-cta-btn w-100" id="confirmReviewBtn" disabled>
+                Confirm &amp; continue
+              </button>
+            </div>
+
+            <!-- ---- shown after confirming ---- -->
+            <div class="card pb-card d-none" id="reviewConfirmedCard">
+              <div class="card-body p-3 p-md-4">
+                <div class="pb-modal-check mb-3" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4">
+                    <path d="M20 6 9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <h3 class="pb-saved-title">Reciepient Review and Cofirmed</h3>
+                <p class="text-secondary" style="font-size:0.88rem;">
+                  Everything above is locked in for this session. Creating the
+                  actual order — generating a ZEC deposit address and initiating
+                  payout — is part of Quest 5.
+                </p>
+                <button type="button" class="btn pb-modal-edit-btn w-100 mb-2" id="unconfirmReviewBtn">Make
+                  changes</button>
+                <button type="button" class="btn pb-cta-btn w-100" disabled title="Not part of Quest 4 scope">
+                  Create order →
+                </button>
+              </div>
+            </div>
+
+            <p class="pb-disclaimer">
+              Confirming locks in the details above for this session only — it
+              doesn't create an order, generate a deposit address, or move any
+              funds. Editing the amount or recipient after confirming
+              automatically un-confirms the review, so a stale confirmation can
+              never carry outdated figures forward.
+            </p>
+
+          </div>
+          <!-- ===================== /STEP 3 ===================== -->
+
+        </div>
+      </div>
+    </main>
+
+    <!-- ===================== PREVIEW MODAL ===================== -->
+    <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pb-modal">
+          <div class="modal-header">
+            <div class="pb-modal-check" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4">
+                <path d="M20 6 9 17l-5-5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h5 class="modal-title" id="previewModalLabel">Exchange preview</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <dl class="pb-summary-list">
+              <div>
+                <dt>Recipient gets</dt>
+                <dd id="modalFiat">—</dd>
+              </div>
+              <div>
+                <dt>You send</dt>
+                <dd id="modalZec">—</dd>
+              </div>
+              <div>
+                <dt>Rate used</dt>
+                <dd id="modalRate">—</dd>
+              </div>
+              <div>
+                <dt>Service fee (<span id="modalFeePct">1.5</span>%)</dt>
+                <dd id="modalFee">—</dd>
+              </div>
+            </dl>
+            <div class="pb-modal-note">
+              This is a preview only — no deposit address has been generated and
+              no funds have moved. Confirming below moves to the recipient
+              bank-details step, then a full review before anything is
+              confirmed; Quest 5 will take that confirmed transaction forward
+              into the actual ZEC payment step.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn pb-modal-edit-btn" data-bs-dismiss="modal">Edit amount</button>
+            <button type="button" class=" pb-cta-btn" id="continueToBankDetailsBtn" data-bs-dismiss="modal">Continue to
+              bank details →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="pb-footer">
+      <div class="container text-center">
+        <span class="text-secondary small">Private Bill · ZcashGH Residency — Quest 4 prototype — exchange, ZEC
+          conversion, recipient bank details, and transaction review</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <script src="./css/bootstrap/js/bootstrap.bundle.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/banks/banks.js"></script>
+  <script src="./js/banks/bankDetailsValidator.js"></script>
+  <script src="./js/banks/transactionState.js"></script>
+  <script src="./js/rateProvider/coingeckoProvider.js"></script>
+  <script src="./js/rateProvider/exchangeRateApiProvider.js"></script>
+  <script src="./js/rateProvider/rateService.js"></script>
+  <script src="./js/converter.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+
+</html>
