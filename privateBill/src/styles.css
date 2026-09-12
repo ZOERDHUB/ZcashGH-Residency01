@@ -43,3 +43,16 @@
 .payment-warning > span { width:22px; height:22px; flex:0 0 22px; display:grid; place-items:center; border-radius:50%; border:1px solid rgba(255,255,255,.16); font-weight:800; font-size:11px; }
 .payment-warning p { margin:0; font-size:11px; line-height:1.55; opacity:.68; }
 @media (max-width: 640px) { .address-row { flex-direction:column; align-items:stretch; } .copy-button { width:100%; } .payment-meta { grid-template-columns:1fr; } .payment-hero strong { font-size:28px; } }
+
+/* Quest 07 payment monitoring */
+.monitor-status{display:flex;gap:14px;align-items:flex-start;margin:18px 0;padding:16px 18px;border:1px solid rgba(255,255,255,.09);border-radius:16px;background:rgba(255,255,255,.035)}
+.monitor-status.is-confirmed{border-color:rgba(96,211,148,.35)}
+.monitor-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;background:#8b8f98;box-shadow:0 0 0 5px rgba(139,143,152,.1);flex:0 0 auto}
+.monitor-status.is-confirmed .monitor-dot{background:#60d394;box-shadow:0 0 0 5px rgba(96,211,148,.1)}
+.monitor-status strong{display:block}.monitor-status p{margin:5px 0 0;opacity:.72;line-height:1.55}
+.payment-detection{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin:16px 0;border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.07)}
+.payment-detection>div{padding:14px 16px;background:#101115}.payment-detection span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.55}.payment-detection strong{display:block;margin-top:6px;font-size:14px;word-break:break-all}
+.monitor-error{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0;padding:14px 16px;border:1px solid rgba(255,184,77,.28);border-radius:14px;background:rgba(255,184,77,.06)}
+.monitor-error span{opacity:.72;flex:1 1 280px}.monitor-error .secondary{padding:9px 12px}
+.secure-chip.success{border-color:rgba(96,211,148,.35)}
+@media (max-width:700px){.payment-detection{grid-template-columns:1fr}.monitor-error{align-items:flex-start}}

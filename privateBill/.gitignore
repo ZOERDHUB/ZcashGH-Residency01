@@ -1,7 +1,8 @@
-node_modules
-dist
+node_modules/
 .env
 .env.*
 !.env.example
-.DS_Store
+dist/
 *.log
+data/*.json
+!data/.gitkeep

@@ -1,6 +1,6 @@
 import type { Currency } from './conversion'
 
-export type OrderStatus = 'AWAITING_ZEC' | 'EXPIRED' | 'COMPLETED' | 'CANCELLED'
+export type OrderStatus = 'AWAITING_ZEC' | 'PAYMENT_DETECTED' | 'CONFIRMING' | 'COMPLETED' | 'PAYMENT_UNDERPAID' | 'EXPIRED' | 'CANCELLED'
 
 export type RecipientPaymentInfo = {
   providerName: string
@@ -21,6 +21,15 @@ export type TransactionOrder = {
   status: OrderStatus
   createdAt: string
   expiresAt: string
+  depositAddress?: string
+  payment?: {
+    txid: string
+    receivedZec: number
+    confirmations: number
+    requiredConfirmations: number
+    detectedAt: string
+    address?: string
+  }
 }
 
 const STORAGE_KEY = 'private-bill:orders:v1'
@@ -67,4 +76,20 @@ export function getTransactionOrder(id: string) {
 
 export function listTransactionOrders() {
   return readOrders()
+}
+
+export function updateTransactionPayment(id: string, payment: NonNullable<TransactionOrder['payment']>, status: OrderStatus) {
+  const orders = readOrders()
+  const index = orders.findIndex(order => order.id === id)
+  if (index < 0) return null
+
+  const existing = orders[index]
+  // Idempotency: do not replace an already-recorded payment with a different
+  // observation unless the same txid is being updated with newer confirmations.
+  if (existing.payment && existing.payment.txid !== payment.txid) return existing
+
+  const updated = { ...existing, payment, status }
+  orders[index] = updated
+  writeOrders(orders)
+  return updated
 }
