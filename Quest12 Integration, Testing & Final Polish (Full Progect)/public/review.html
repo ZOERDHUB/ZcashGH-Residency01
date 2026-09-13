@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Bill — Review</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+
+  <main class="screen">
+    <div class="panel">
+      <a href="/bank-details.html" class="back-link">&larr; Back</a>
+
+      <p class="step-cue">4 of 5 — Review</p>
+      <h1 class="title">Review before you send</h1>
+      <p class="subtitle">Double-check everything below. Once you confirm, we'll create the order and show you where to send ZEC.</p>
+
+      <div class="review-section">
+        <div class="review-section-header">
+          <span class="review-section-title">Payment</span>
+          <a href="/index.html" class="review-edit-link">Edit</a>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Recipient gets</span>
+          <span class="review-value" id="review-fiat">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">You send</span>
+          <span class="review-value" id="review-zec">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Rate</span>
+          <span class="review-value" id="review-rate">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Fees</span>
+          <span class="review-value">No separate Private Bill fee — the rate above is what you pay</span>
+        </div>
+      </div>
+
+      <div class="review-section">
+        <div class="review-section-header">
+          <span class="review-section-title">Recipient</span>
+          <a href="/bank-details.html" class="review-edit-link">Edit</a>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Bank</span>
+          <span class="review-value" id="review-bank">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Account number</span>
+          <span class="review-value review-value--mono">
+            <span id="review-account-number">—</span>
+            <button type="button" class="mask-toggle" id="mask-toggle">Show</button>
+          </span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Account name</span>
+          <span class="review-value" id="review-account-name">—</span>
+        </div>
+      </div>
+
+      <button type="button" class="continue-btn" id="confirm-btn">
+        Confirm and continue
+      </button>
+    </div>
+  </main>
+
+  <script src="./js/state.js"></script>
+  <script src="./js/review.js"></script>
+</body>
+</html>

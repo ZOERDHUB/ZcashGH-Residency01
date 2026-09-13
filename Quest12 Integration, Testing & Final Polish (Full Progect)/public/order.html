@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Bill — Order Created</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+
+  <main class="screen">
+    <div class="panel">
+      <p class="step-cue">5 of 5 — Order</p>
+      <h1 class="title" id="order-title">Creating your order…</h1>
+      <p class="subtitle" id="order-subtitle">Hang on a moment.</p>
+
+      <div id="order-details" hidden>
+        <div class="review-section">
+          <div class="review-row">
+            <span class="review-label">Order ID</span>
+            <span class="review-value review-value--mono" id="order-id">—</span>
+          </div>
+          <div class="review-row">
+            <span class="review-label">Status</span>
+            <span class="review-value" id="order-status">—</span>
+          </div>
+          <div class="review-row">
+            <span class="review-label">Expires</span>
+            <span class="review-value" id="order-expires">—</span>
+          </div>
+        </div>
+
+        <div class="funding-note">
+          <span class="funding-note-dot" aria-hidden="true"></span>
+          <div>
+            <p class="funding-note-title">Order saved</p>
+            <p class="funding-note-body">Next, you'll see exactly where to send your ZEC.</p>
+          </div>
+        </div>
+
+        <a href="#" class="continue-btn" id="continue-to-payment" style="display:block; text-align:center; text-decoration:none;">
+          Continue to payment instructions
+        </a>
+      </div>
+
+      <div id="order-error" hidden>
+        <p class="field-error" id="order-error-message"></p>
+        <button type="button" class="continue-btn" id="retry-btn">Try again</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="./js/state.js"></script>
+  <script src="./js/order.js"></script>
+</body>
+</html>

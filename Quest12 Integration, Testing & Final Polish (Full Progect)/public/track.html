@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Bill — Track Your Payment</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+
+  <main class="screen">
+    <div class="panel" id="loading-panel">
+      <p class="subtitle">Loading your order…</p>
+    </div>
+
+    <div class="panel" id="error-panel" hidden>
+      <h1 class="title">We couldn't find that order</h1>
+      <p class="subtitle" id="error-message">It may have expired, or the link is incomplete.</p>
+      <a href="/index.html" class="continue-btn" style="display:inline-block; text-align:center; text-decoration:none;">Start a new payment</a>
+    </div>
+
+    <div class="panel" id="tracking-panel" hidden>
+      <p class="step-cue">Tracking</p>
+      <h1 class="title">Track your payment</h1>
+
+      <div class="review-section">
+        <div class="review-row">
+          <span class="review-label">Order ID</span>
+          <span class="review-value review-value--mono" id="track-order-id">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Sending</span>
+          <span class="review-value" id="track-summary">—</span>
+        </div>
+      </div>
+
+      <div class="status-banner" id="status-banner" hidden></div>
+
+      <ol class="stepper" id="stepper"></ol>
+
+      <p class="privacy-note" id="live-note">Updates automatically — no need to refresh.</p>
+    </div>
+  </main>
+
+  <script src="/js/exceptionMessages.js"></script>
+  <script src="./js/track.js"></script>
+</body>
+</html>

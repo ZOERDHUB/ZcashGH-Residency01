@@ -1,0 +1,25 @@
+{
+  "name": "build-my-crypto",
+  "version": "1.0.0",
+  "description": "ZEC-to-fiat off-ramp — Zcash Privacy Developers Residency",
+  "keywords": [
+    "zcash",
+    "zec",
+    "fiat",
+    "off-ramp"
+  ],
+  "license": "ISC",
+  "author": "Akwenuke Daniel",
+  "type": "commonjs",
+  "main": "server.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.22.2"
+  }
+}

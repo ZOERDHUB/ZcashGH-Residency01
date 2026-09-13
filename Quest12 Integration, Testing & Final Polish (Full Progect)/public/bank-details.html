@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Bill — Recipient Bank Details</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <main class="screen">
+    <div class="panel">
+      <a href="/index.html" class="back-link">&larr; Back</a>
+      <p class="step-cue">3 of 5 — Bank details</p>
+      <h1 class="title">Where should the money land?</h1>
+      <p class="subtitle">Enter the recipient's bank account. We'll show you the full summary before anything is sent.</p>
+
+      <div class="context-summary" id="context-summary" hidden>
+        <span class="context-summary-label">Sending</span>
+        <span class="context-summary-value" id="context-fiat">—</span>
+        <span class="context-summary-sep">·</span>
+        <span class="context-summary-value" id="context-zec">—</span>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="bank-select">Bank</label>
+        <select id="bank-select" class="select-input">
+          <option value="" disabled selected>Select a bank</option>
+        </select>
+        <p class="field-error" id="bank-error" hidden></p>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="account-number">Account number</label>
+        <input
+          type="text"
+          id="account-number"
+          class="text-input"
+          placeholder="0123456789"
+          inputmode="numeric"
+          autocomplete="off"
+          maxlength="17"
+        />
+        <p class="field-error" id="account-number-error" hidden></p>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="account-name">Account name</label>
+        <input
+          type="text"
+          id="account-name"
+          class="text-input"
+          placeholder="As it appears on the account"
+          autocomplete="off"
+        />
+        <p class="field-error" id="account-name-error" hidden></p>
+      </div>
+
+      <p class="privacy-note">
+        Your recipient's details are only used to complete this transaction and are never shown in full anywhere but here and the review step.
+      </p>
+
+      <button type="button" class="continue-btn" id="continue-btn" disabled>
+        Continue
+      </button>
+    </div>
+  </main>
+
+  <script src="./js/state.js"></script>
+  <script src="./js/bank-details.js"></script>
+</body>
+</html>

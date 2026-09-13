@@ -1,0 +1,33 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "main",
+    "quest/06-JoshuaEd",
+    "quest/08-0xweb3devrel",
+    "quest/09-0xweb3devrel",
+    "quest/10-0xweb3devrel",
+    "quest/11-0xweb3devrel",
+    "quest/12-0xweb3devrel",
+    "quest/12-just-danielgrey623"
+  ],
+  "parent": {
+    "main": null,
+    "quest/06-JoshuaEd": "main",
+    "quest/08-0xweb3devrel": "main",
+    "quest/09-0xweb3devrel": "main",
+    "quest/10-0xweb3devrel": "main",
+    "quest/11-0xweb3devrel": "main",
+    "quest/12-0xweb3devrel": "main",
+    "quest/12-just-danielgrey623": "main"
+  },
+  "order": [
+    "main",
+    "quest/06-JoshuaEd",
+    "quest/08-0xweb3devrel",
+    "quest/09-0xweb3devrel",
+    "quest/10-0xweb3devrel",
+    "quest/11-0xweb3devrel",
+    "quest/12-0xweb3devrel",
+    "quest/12-just-danielgrey623"
+  ]
+}

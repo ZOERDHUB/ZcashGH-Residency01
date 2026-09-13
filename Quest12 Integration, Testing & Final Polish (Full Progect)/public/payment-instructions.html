@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Bill — Send ZEC</title>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+
+  <main class="screen">
+    <div class="panel" id="loading-panel">
+      <p class="subtitle">Loading your order…</p>
+    </div>
+
+    <div class="panel" id="error-panel" hidden>
+      <h1 class="title">We couldn't find that order</h1>
+      <p class="subtitle" id="error-message">It may have expired, or the link is incomplete.</p>
+      <a href="/index.html" class="continue-btn" style="display:inline-block; text-align:center; text-decoration:none;">Start a new payment</a>
+    </div>
+
+    <div class="panel" id="instructions-panel" hidden>
+      <p class="step-cue">Send ZEC to fund this order</p>
+      <h1 class="title">Send exactly this much ZEC</h1>
+      <p class="subtitle">This order is reserved for your payment below. Sending a different amount may cause delays.</p>
+
+      <div class="review-section">
+        <div class="review-row">
+          <span class="review-label">Amount to send</span>
+          <span class="review-value review-value--mono" id="pay-zec-amount">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Order ID</span>
+          <span class="review-value review-value--mono" id="pay-order-id">—</span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Status</span>
+          <span class="review-value" id="pay-status">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">—</span>
+          </span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Expires</span>
+          <span class="review-value" id="pay-expires">—</span>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <span class="field-label">Send to this ZEC address</span>
+        <div class="copy-box">
+          <span class="copy-box-value" id="pay-address">—</span>
+          <button type="button" class="copy-btn" id="copy-btn">Copy</button>
+        </div>
+      </div>
+
+      <div class="funding-note">
+        <span class="funding-note-dot" aria-hidden="true"></span>
+        <div>
+          <p class="funding-note-title">Waiting for your payment</p>
+          <p class="funding-note-body">Once your ZEC arrives and confirms on the network, this order will move to the next stage automatically. (Live detection is Quest 07 — not built yet, so status here won't change on its own until that exists.)</p>
+        </div>
+      </div>
+
+      <div class="status-banner" id="exception-banner" hidden></div>
+
+      <button type="button" class="continue-btn continue-btn--secondary" id="refresh-btn">
+        Refresh status
+      </button>
+      <a href="#" class="continue-btn" id="track-link" style="display:block; text-align:center; text-decoration:none; margin-top: 10px;">
+        Track this payment
+      </a>
+      <button type="button" class="cancel-link" id="cancel-btn">
+        Cancel this order
+      </button>
+    </div>
+  </main>
+
+  <script src="./js/exceptionMessages.js"></script>
+  <script src="./js/payment-instructions.js"></script>
+</body>
+</html>
