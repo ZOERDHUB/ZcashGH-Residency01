@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { canTransition, assertValidTransition } from './src/status-engine.mjs'
+import { stateFor } from './src/payment-monitor.mjs'
 import { MockPayoutProvider } from './src/payout-service.mjs'
 import { JsonStore } from './src/store.mjs'
 import fs from 'node:fs/promises'
@@ -79,4 +80,25 @@ assert.deepEqual(final.statusHistory.map(item => item.to), [
   'PAYOUT_PROCESSING', 'FIAT_SENT', 'COMPLETED'
 ])
 
-console.log('Q10 transaction tracking tests passed: 8')
+// Q11 exception handling
+assert.equal(stateFor({ receivedZec: 0, confirmedZec: 0, requiredZec: 0.1, pendingPayment: false, expired: true }), 'EXPIRED')
+assert.equal(stateFor({ receivedZec: 0.05, confirmedZec: 0.05, requiredZec: 0.1, pendingPayment: false, expired: false }), 'UNDERPAID')
+assert.equal(stateFor({ receivedZec: 0.11, confirmedZec: 0.11, requiredZec: 0.1, pendingPayment: false, expired: false }), 'OVERPAID')
+assert.equal(canTransition('OVERPAID', 'PAYOUT_PROCESSING'), false, 'overpaid transactions must not enter payout processing')
+assert.equal(canTransition('PAYOUT_PROCESSING', 'CANCELLED'), false, 'payouts cannot be cancelled while provider processing is active')
+assert.equal(canTransition('ZEC_CONFIRMED', 'COMPLETED'), false, 'confirmed ZEC alone must never mark fiat completion')
+
+const errorDir = await fs.mkdtemp(path.join(os.tmpdir(), 'private-bill-q11-'))
+const errorStore = new JsonStore(path.join(errorDir, 'orders.json'))
+await errorStore.init()
+const errorOrder = await errorStore.createOrder({
+  id: 'PB-Q11-ERROR', fiatCurrency: 'NGN', fiatAmount: 10000, requiredZec: 0.1,
+  recipient, depositAddress: 't1PrivateBillQ11TestAddress123456789'
+})
+await errorStore.transitionOrder(errorOrder.id, 'AWAITING_ZEC', 'Ready')
+await errorStore.recordError(errorOrder.id, { code: 'UNDERPAYMENT', message: 'Not enough ZEC received', retryable: true, at: new Date().toISOString() })
+assert.equal(errorStore.getOrder(errorOrder.id).lastError.code, 'UNDERPAYMENT')
+await errorStore.clearError(errorOrder.id)
+assert.equal(errorStore.getOrder(errorOrder.id).lastError, null)
+
+console.log('Q11 transaction error handling tests passed: 15')
