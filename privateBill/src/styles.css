@@ -116,3 +116,18 @@
 .payout-card h3 { margin:4px 0 6px; }
 .payout-card p { margin:0; }
 @media (max-width: 700px) { .payout-card { flex-direction:column; align-items:flex-start; } }
+
+
+/* Quest 10 — Transaction tracking */
+.tracking-launch{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:18px 0;padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.025)}
+.tracking-launch>div{min-width:0}.tracking-launch span,.tracking-id>span,.tracking-payment>span{display:block;font-size:9px;letter-spacing:.13em;font-weight:800;opacity:.5}.tracking-launch strong{display:block;margin:6px 0 4px;font-size:13px}.tracking-launch p{margin:0;font-size:11px;line-height:1.5;opacity:.58}
+.tracking-id{margin:18px 0 12px;padding:18px;border:1px solid rgba(246,198,0,.18);border-radius:16px;background:rgba(246,198,0,.035)}
+.tracking-id strong{display:block;margin-top:7px;font:700 18px 'DM Mono',monospace;color:#f6c600;word-break:break-all}
+.tracking-summary{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;margin:14px 0;border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.07)}
+.tracking-summary>div{padding:14px 16px;background:#101115}.tracking-summary span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.07em;opacity:.48}.tracking-summary strong{display:block;margin-top:6px;font-size:12px;overflow-wrap:anywhere}
+.tracking-live{display:flex;gap:11px;align-items:flex-start;margin:16px 0;padding:14px 16px;border:1px solid rgba(96,211,148,.22);border-radius:14px;background:rgba(96,211,148,.035)}
+.tracking-live-dot{width:9px;height:9px;margin-top:5px;flex:0 0 auto;border-radius:50%;background:#60d394;box-shadow:0 0 0 4px rgba(96,211,148,.1)}.tracking-live strong{font-size:11px}.tracking-live p{margin:4px 0 0;font-size:10px;line-height:1.5;opacity:.58}
+.tracking-timeline{margin:16px 0;padding:18px;border:1px solid rgba(255,255,255,.09);border-radius:16px}
+.tracking-stage{position:relative;display:grid;grid-template-columns:30px 1fr;gap:12px;min-height:58px;opacity:.38}.tracking-stage:not(:last-child)::after{content:'';position:absolute;left:14px;top:29px;bottom:-3px;width:1px;background:currentColor;opacity:.3}.tracking-stage.done,.tracking-stage.current{opacity:1}.tracking-stage.current strong{font-weight:800}.tracking-stage-marker{width:28px;height:28px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.2);border-radius:50%;font-size:10px;font-weight:800}.tracking-stage.done .tracking-stage-marker{border-color:currentColor;background:currentColor;color:#111}.tracking-stage.current .tracking-stage-marker{box-shadow:0 0 0 4px rgba(255,255,255,.07)}.tracking-stage strong{display:block;padding-top:5px;font-size:12px}.tracking-stage small{display:block;margin-top:4px;font:9px 'DM Mono',monospace;opacity:.55}.tracking-stage p{margin:4px 0 0;font-size:10px;opacity:.58}.tracking-stage.exception{opacity:1}.tracking-stage.exception .tracking-stage-marker{border-color:rgba(255,184,77,.55)}
+.tracking-payment{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0;padding:16px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.025)}.tracking-payment>span{grid-column:1/-1}.tracking-payment>div{min-width:0}.tracking-payment strong{display:block;font-size:13px}.tracking-payment small{display:block;margin-top:4px;font:9px 'DM Mono',monospace;opacity:.55;overflow-wrap:anywhere}
+@media(max-width:700px){.tracking-launch{align-items:flex-start;flex-direction:column}.tracking-launch button{width:100%}.tracking-summary{grid-template-columns:1fr}.tracking-payment{grid-template-columns:1fr}.tracking-payment>span{grid-column:auto}}

@@ -66,4 +66,17 @@ assert.ok(final.statusTimestamps.PAYOUT_PROCESSING)
 assert.ok(final.statusTimestamps.FIAT_SENT)
 assert.ok(final.statusTimestamps.COMPLETED)
 
-console.log('Q9 fiat payout layer tests passed: 6')
+
+assert.deepEqual([
+  'AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'ZEC_CONFIRMED',
+  'PAYOUT_PROCESSING', 'FIAT_SENT', 'COMPLETED'
+], [
+  'AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'ZEC_CONFIRMED',
+  'PAYOUT_PROCESSING', 'FIAT_SENT', 'COMPLETED'
+])
+assert.deepEqual(final.statusHistory.map(item => item.to), [
+  'CREATED', 'AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'ZEC_CONFIRMED',
+  'PAYOUT_PROCESSING', 'FIAT_SENT', 'COMPLETED'
+])
+
+console.log('Q10 transaction tracking tests passed: 8')

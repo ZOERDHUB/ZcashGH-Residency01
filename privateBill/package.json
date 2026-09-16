@@ -1,7 +1,7 @@
 {
-  "name": "private-bill-quest-09",
+  "name": "private-bill-quest-10",
   "private": true,
-  "version": "5.0.0",
+  "version": "6.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
