@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { convertFiatToZec, type ConversionRates, type Currency } from './conversion'
 import { fetchConversionRates } from './market'
 import { DemoBankProvider, type Bank, type ProviderType } from './banks'
-import { createTransactionOrder, updateTransactionPayment, type TransactionOrder } from './orders'
+import { createTransactionOrder, syncTransactionStatus, updateTransactionPayment, type TransactionOrder } from './orders'
 import { BackendPaymentMonitor, paymentStatusLabel, type PaymentCheck } from './payment-monitor.ts'
+import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine'
+import { requestPayout } from './payout'
+import { fetchTransactionTracking, getTrackingStages } from './tracking'
 
 type CurrencyMeta = { name: string; symbol: string; flag: string; country: string }
 type BankDetails = { accountNumber: string; accountName: string; bankName: string; bankCode: string; country: string; currency: Currency }
@@ -36,6 +39,14 @@ function toOrderPayment(payment: NonNullable<PaymentCheck['payment']>) {
   }
 }
 
+function statusStepClass(status: TransactionStatus, current: TransactionStatus) {
+  const currentIndex = CORE_STATUS_FLOW.indexOf(current)
+  const index = CORE_STATUS_FLOW.indexOf(status)
+  if (status === current) return 'current'
+  if (index >= 0 && currentIndex >= 0 && index < currentIndex) return 'done'
+  return ''
+}
+
 function App() {
   const [currency, setCurrency] = useState<Currency>('NGN')
   const [amount, setAmount] = useState('100000')
@@ -58,9 +69,10 @@ function App() {
   const [addressCopied, setAddressCopied] = useState(false)
   const [paymentCheck, setPaymentCheck] = useState<PaymentCheck | null>(null)
   const [checkingPayment, setCheckingPayment] = useState(false)
+  const [processingPayout, setProcessingPayout] = useState(false)
+  const [payoutError, setPayoutError] = useState('')
   const [paymentMonitorError, setPaymentMonitorError] = useState('')
-  const [payoutLoading, setPayoutLoading] = useState(false)
-  const [trackingError, setTrackingError] = useState('')
+  const [cancellingOrder, setCancellingOrder] = useState(false)
   const paymentMonitor = useMemo(() => new BackendPaymentMonitor(), [])
 
   const loadRates = useCallback(async () => {
@@ -76,7 +88,7 @@ function App() {
   useEffect(() => {
     void loadRates()
     const interval = window.setInterval(() => void loadRates(), 60_000)
-    return () => window.clearInterval(interval)
+  return () => window.clearInterval(interval)
   }, [loadRates])
 
   const selected = CURRENCIES[currency]
@@ -123,48 +135,74 @@ function App() {
   const marketStatus = loadingRates ? 'Updating rates' : rateError ? 'Rate unavailable' : 'Live market rates'
 
   useEffect(() => {
-    if ((step !== 5 && step !== 6) || !order) return
+    if (step !== 5 || !order) return
+
     let cancelled = false
     let interval: number | undefined
-    const sync = async () => {
-      if (cancelled) return
-      try {
-        const statusResponse = await fetch(`/api/orders/${encodeURIComponent(order.id)}/status`, { cache: 'no-store' })
-        const statusData = await statusResponse.json()
-        if (!statusResponse.ok) throw new Error(statusData.error || 'Unable to load transaction status.')
-        if (!cancelled) setOrder(prev => prev ? { ...prev, ...statusData } : prev)
-        if (step === 5 && ['ZEC_CONFIRMED','PAYOUT_PROCESSING','FIAT_SENT','COMPLETED','PAYOUT_FAILED','CANCELLED','EXPIRED','OVERPAID'].includes(statusData.status)) {
-          setStep(6)
-        }
-      } catch (e) { if (!cancelled) setTrackingError(e instanceof Error ? e.message : 'Transaction status is temporarily unavailable.') }
-    }
-    void sync(); interval = window.setInterval(() => void sync(), 5000)
-    return () => { cancelled = true; if (interval) window.clearInterval(interval) }
-  }, [step, order?.id])
 
-  useEffect(() => {
-    if (step !== 5 || !order) return
-    let cancelled = false
-    const check = async () => {
-      setCheckingPayment(true); setPaymentMonitorError('')
+    const checkPayment = async () => {
+      if (cancelled) return
+      setCheckingPayment(true)
+      setPaymentMonitorError('')
       try {
         const result = await paymentMonitor.check(order)
         if (cancelled) return
         setPaymentCheck(result)
+        if (result.error) setPaymentMonitorError(result.error)
+        let updated = order
         if (result.payment) {
-          const status = result.state as TransactionOrder['status']
-          const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), status)
-          if (updated) setOrder(prev => ({ ...(prev || updated), ...updated, status }))
+          const paymentStatus = result.state as TransactionOrder['status']
+          const withPayment = updateTransactionPayment(order.id, toOrderPayment(result.payment), paymentStatus)
+          if (withPayment) updated = withPayment
         }
-        if (result.state === 'ZEC_CONFIRMED') setStep(6)
-      } catch (error) { if (!cancelled) setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') }
-      finally { if (!cancelled) setCheckingPayment(false) }
+        const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps)
+        if (synced) updated = synced
+        setOrder(updated)
+      } catch (error) {
+        if (!cancelled) setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.')
+      } finally {
+        if (!cancelled) setCheckingPayment(false)
+      }
     }
-    void check()
-    const interval = window.setInterval(() => void check(), 10000)
-    return () => { cancelled = true; window.clearInterval(interval) }
+
+    void checkPayment()
+    interval = window.setInterval(() => void checkPayment(), 10_000)
+    return () => {
+      cancelled = true
+      if (interval) window.clearInterval(interval)
+    }
   }, [step, order?.id, paymentMonitor])
 
+  // Quest 10: the tracking experience reads the persisted backend state.
+  // It never advances the UI on its own; polling only reflects server state.
+  useEffect(() => {
+    if (step !== 6 || !order) return
+    let cancelled = false
+    let interval: number | undefined
+
+    const refreshTracking = async () => {
+      try {
+        // Trigger the real backend payment monitor first so the tracker can
+        // reflect newly detected/confirmed ZEC rather than a simulated timer.
+        await paymentMonitor.check(order)
+        const tracking = await fetchTransactionTracking(order.id)
+        if (cancelled) return
+
+        if (tracking.lastError) setPaymentMonitorError(tracking.lastError.message)
+        const updated = syncTransactionStatus(order.id, tracking.status, tracking.statusHistory, tracking.statusTimestamps)
+        if (updated) setOrder({ ...updated, lastError: tracking.lastError ?? null })
+      } catch (error) {
+        if (!cancelled) setPaymentMonitorError(error instanceof Error ? error.message : 'Transaction status is temporarily unavailable.')
+      }
+    }
+
+    void refreshTracking()
+    interval = window.setInterval(() => void refreshTracking(), 5_000)
+    return () => {
+      cancelled = true
+      if (interval) window.clearInterval(interval)
+    }
+  }, [step, order?.id, paymentMonitor])
 
   const chooseCurrency = (next: Currency) => {
     setCurrency(next); setMenuOpen(false)
@@ -173,11 +211,54 @@ function App() {
     setBankMenuOpen(false)
   }
   const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
+  const handlePayout = async () => {
+    if (!order || !['ZEC_CONFIRMED', 'PAYOUT_FAILED'].includes(order.status)) return
+    setProcessingPayout(true)
+    setPayoutError('')
+    try {
+      const result = await requestPayout(order.id)
+      if (result.order) {
+        setOrder(result.order)
+        showToast(result.order.status === 'COMPLETED' ? 'Fiat payout completed.' : 'Payout status updated.')
+      }
+    } catch (error) {
+      setPayoutError(error instanceof Error ? error.message : 'Payout failed.')
+      try {
+        const refreshed = await fetch(`/api/orders/${encodeURIComponent(order.id)}/payout`, { cache: 'no-store' }).then(r => r.json())
+        if (refreshed?.payout) setOrder({ ...order, status: refreshed.status, payout: refreshed.payout })
+      } catch {}
+    } finally {
+      setProcessingPayout(false)
+    }
+  }
+  const cancelTransaction = async () => {
+    if (!order || !['AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'UNDERPAID', 'OVERPAID'].includes(order.status)) return
+    setCancellingOrder(true)
+    setPaymentMonitorError('')
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(order.id)}/cancel`, { method: 'POST', headers: { Accept: 'application/json' } })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || `Cancellation failed (${response.status})`)
+      if (data.order) {
+        setOrder(data.order)
+        setStep(6)
+        showToast('Transaction cancelled.')
+      }
+    } catch (error) {
+      setPaymentMonitorError(error instanceof Error ? error.message : 'Transaction cancellation failed.')
+    } finally { setCancellingOrder(false) }
+  }
+
   const registerOrderWithMonitor = async (created: TransactionOrder) => {
-    const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(created) })
-    const data = await response.json().catch(() => ({}))
+    const response = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(created),
+    })
+    const data = await response.json() as TransactionOrder & { error?: string }
     if (!response.ok) throw new Error(data.error || 'The transaction order could not be registered with the payment monitor.')
-    return data as TransactionOrder
+    setOrder(data)
+    return data
   }
   const continueToDetails = () => {
     if (numericAmount < MIN_AMOUNT[currency]) return showToast(amountError || 'Enter a valid amount.')
@@ -263,8 +344,7 @@ function App() {
                   depositAddress: ZEC_RECEIVING_ADDRESS,
                 })
                 try {
-                  const registered = await registerOrderWithMonitor(created)
-                  setOrder(registered)
+                  await registerOrderWithMonitor(created)
                 } catch (error) {
                   showToast(error instanceof Error ? error.message : 'Payment monitor registration failed.')
                   return
@@ -280,6 +360,7 @@ function App() {
               <div className="order-success"><span>ORDER ID</span><strong>{order.id}</strong><small>Keep this ID to track the transaction.</small></div>
               <div className="review-list"><div><span>Status</span><strong>{order.status}</strong></div><div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>Required ZEC</span><strong>{formatZec(order.requiredZec)} ZEC</strong></div><div><span>Recipient</span><strong>{order.recipient.accountName}</strong></div><div><span>Provider</span><strong>{order.recipient.providerName}</strong></div><div><span>Account</span><strong>{maskAccount(order.recipient.accountNumber)}</strong></div><div><span>Created</span><strong>{new Date(order.createdAt).toLocaleString()}</strong></div><div><span>Expires</span><strong>{new Date(order.expiresAt).toLocaleString()}</strong></div></div>
               <div className="review-warning"><span>✓</span><p>The order is persistent in this demo and begins in <strong>AWAITING_ZEC</strong>. The next stage can retrieve it using the order ID.</p></div>
+              {order.lastError && <div className="transaction-error" role="alert"><strong>{order.lastError.code.replaceAll('_', ' ')}</strong><span>{order.lastError.message}</span></div>}
               <button className="primary" onClick={() => { setAddressCopied(false); setStep(5) }}>Continue to payment <span>→</span></button>
             </>}
 
@@ -288,32 +369,73 @@ function App() {
               <div className="payment-hero"><span>YOU NEED TO SEND</span><strong>{formatZec(order.requiredZec)} <small>ZEC</small></strong><p>Order <b>{order.id}</b> will only be funded after a trusted payment monitor detects the on-chain payment.</p></div>
               <div className="payment-address"><div className="payment-address-head"><div><span className="field-label">ZEC RECEIVING ADDRESS</span><small>Payment destination assigned to this transaction</small></div><span className="address-badge">ZEC</span></div><div className="address-row"><code>{order.depositAddress || ZEC_RECEIVING_ADDRESS}</code><button className="copy-button" onClick={async () => { try { await navigator.clipboard.writeText(order.depositAddress || ZEC_RECEIVING_ADDRESS); setAddressCopied(true); window.setTimeout(() => setAddressCopied(false), 2200) } catch { showToast('Copy failed. Please copy the address manually.') } }} aria-label="Copy ZEC receiving address">{addressCopied ? '✓ Copied' : 'Copy address'}</button></div></div>
               <div className="payment-meta"><div><span>Order ID</span><strong>{order.id}</strong></div><div><span>Current status</span><strong>{paymentStatusLabel(paymentCheck?.state ?? order.status as never)}</strong></div><div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>Destination</span><strong>{order.recipient.country} · {order.fiatCurrency}</strong></div><div><span>Payment expires</span><strong>{new Date(order.expiresAt).toLocaleString()}</strong></div><div><span>Last checked</span><strong>{paymentCheck ? new Date(paymentCheck.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Not checked yet'}</strong></div></div>
+              <div className="status-timeline" aria-label="Transaction status timeline">
+                {CORE_STATUS_FLOW.map(status => {
+                  const currentStatus = (paymentCheck?.state ?? order.status) as TransactionStatus
+                  return (
+                    <div key={status} className={`status-timeline-item ${statusStepClass(status, currentStatus)}`}>
+                      <span className="status-timeline-dot" />
+                      <div><strong>{STATUS_LABELS[status]}</strong><small>{order.statusTimestamps?.[status] ? new Date(order.statusTimestamps[status]!).toLocaleString() : 'Pending'}</small></div>
+                    </div>
+                  )
+                })}
+              </div>
               <div className={`monitor-status ${paymentCheck?.state === 'ZEC_CONFIRMED' ? 'is-confirmed' : ''}`}><div className="monitor-dot" /><div><strong>{paymentStatusLabel(paymentCheck?.state ?? order.status as never)}</strong><p>{checkingPayment ? 'Checking the payment monitor…' : paymentMonitorError ? 'The monitor could not be reached. The order remains unfunded until a trusted check succeeds.' : paymentCheck?.payment ? `${formatZec(paymentCheck.payment.amountZec)} ZEC detected in transaction ${paymentCheck.payment.txid.slice(0, 12)}… with ${paymentCheck.payment.confirmations} confirmation${paymentCheck.payment.confirmations === 1 ? '' : 's'}.` : 'No qualifying payment has been detected yet. This screen never treats a client-side “sent” action as proof of payment.'}</p></div></div>
               {paymentCheck?.payment && <div className="payment-detection"><div><span>Detected amount</span><strong>{formatZec(paymentCheck.payment.amountZec)} ZEC</strong></div><div><span>Confirmations</span><strong>{paymentCheck.payment.confirmations} / {paymentCheck.payment.requiredConfirmations}</strong></div><div><span>Transaction</span><strong>{paymentCheck.payment.txid.slice(0, 18)}…</strong></div></div>}
+              {(order.lastError || paymentCheck?.error) && <div className="transaction-error" role="alert"><strong>{order.lastError?.code?.replaceAll('_', ' ') || 'PAYMENT CHECK ERROR'}</strong><span>{order.lastError?.message || paymentCheck?.error}</span>{(order.lastError?.retryable || paymentCheck?.retryable) && <small>Retrying is safe; the transaction will not be marked completed unless the backend confirms the required state.</small>}</div>}
               <div className="payment-instructions"><div className="instruction-icon">1</div><div><strong>Open your Zcash wallet</strong><p>Choose ZEC and prepare a payment to the order-specific address above.</p></div><div className="instruction-icon">2</div><div><strong>Send the required amount</strong><p>Send <b>{formatZec(order.requiredZec)} ZEC</b>. The backend monitor determines whether the required amount was actually received.</p></div><div className="instruction-icon">3</div><div><strong>Wait for detection and confirmations</strong><p>Keep this order ID. The application updates only from trusted payment-monitor data, not from a browser button.</p></div></div>
               <div className="payment-warning"><span>!</span><p><strong>Important:</strong> Do not rely on a wallet “sent” message as proof of funding. The order is not considered funded until the payment monitor detects the transaction at the correct address and records it against this order.</p></div>
-              {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Payment monitor unavailable.</strong><span>{paymentMonitorError}</span><button className="secondary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const nextStatus = result.state === 'ZEC_CONFIRMED' ? 'COMPLETED' : result.state; const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), nextStatus as TransactionOrder['status']); if (updated) setOrder(updated) } } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>Retry check</button></div>}
-              <div className="button-row"><button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const nextStatus = result.state === 'ZEC_CONFIRMED' ? 'COMPLETED' : result.state; const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), nextStatus as TransactionOrder['status']); if (updated) setOrder(updated) } else showToast('No qualifying ZEC payment detected yet.') } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>{checkingPayment ? 'Checking…' : 'Check payment status'} <span>↻</span></button></div>
+              {(order.status === 'ZEC_CONFIRMED' || order.status === 'PAYOUT_FAILED') && <div className="payout-card">
+                <div><span className="kicker">FIAT PAYOUT</span><h3>{order.status === 'PAYOUT_FAILED' ? 'Retry the fiat payout' : 'Ready to pay the recipient'}</h3><p>{formatFiat(order.fiatAmount, order.fiatCurrency)} will be sent to {order.recipient.accountName} via {order.recipient.providerName}.</p></div>
+                <button className="primary" onClick={handlePayout} disabled={processingPayout}>{processingPayout ? 'Processing payout…' : order.status === 'PAYOUT_FAILED' ? 'Retry payout' : 'Process fiat payout'}</button>
+              </div>}
+              {order.payout && <div className="payment-detection"><div><span>Payout status</span><strong>{order.payout.status}</strong></div><div><span>Provider</span><strong>{order.payout.provider}</strong></div><div><span>Attempts</span><strong>{order.payout.attempts.length}</strong></div><div><span>Reference</span><strong>{order.payout.providerReference ? order.payout.providerReference.slice(0, 18) + '…' : 'Pending'}</strong></div></div>}
+              {payoutError && <div className="monitor-error" role="alert"><strong>Payout failed.</strong><span>{payoutError}</span></div>}
+              <div className="tracking-launch">
+                <div><span>TRANSACTION TRACKING</span><strong>Follow this transaction live</strong><p>The tracker reads the current transaction state from the backend.</p></div>
+                <button className="secondary" onClick={() => setStep(6)}>Track transaction →</button>
+              </div>
+              {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Payment monitor unavailable.</strong><span>{paymentMonitorError}</span><button className="secondary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced) } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>Retry check</button></div>}
+              <div className="button-row">{['AWAITING_ZEC','ZEC_DETECTED','CONFIRMING','UNDERPAID','OVERPAID'].includes(order.status) && <button className="secondary" onClick={cancelTransaction} disabled={cancellingOrder}>{cancellingOrder ? 'Cancelling…' : 'Cancel transaction'}</button>}<button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced); if (!result.payment) showToast('No qualifying ZEC payment detected yet.') } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>{checkingPayment ? 'Checking…' : 'Check payment status'} <span>↻</span></button></div>
             </>}
 
             {step === 6 && order && <>
-              <div className="card-head details-head"><div><span className="kicker">LIVE TRANSACTION TRACKING</span><h2>Track your transaction</h2><p className="subhead">This timeline is driven by the backend transaction state — never by simulated frontend progress.</p></div><span className={`secure-chip ${order.status === 'COMPLETED' ? 'success' : ''}`}>● {paymentStatusLabel(order.status)}</span></div>
-              <div className="tracking-summary"><div><span>ORDER ID</span><strong>{order.id}</strong></div><div><span>YOU RECEIVE</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>ZEC REQUIRED</span><strong>{formatZec(order.requiredZec)} ZEC</strong></div></div>
-              <div className="tracking-timeline">{['AWAITING_ZEC','ZEC_DETECTED','CONFIRMING','ZEC_CONFIRMED','PAYOUT_PROCESSING','FIAT_SENT','COMPLETED'].map((statusName, i) => { const done = order.status === 'COMPLETED' || (order.statusTimestamps && order.statusTimestamps[statusName]); const active = order.status === statusName; return <div className={`tracking-step ${done ? 'done' : ''} ${active ? 'active' : ''}`} key={statusName}><span className="tracking-dot">{done ? '✓' : i + 1}</span><div><strong>{paymentStatusLabel(statusName as TransactionOrder['status'])}</strong><small>{order.statusTimestamps?.[statusName] ? new Date(order.statusTimestamps[statusName]).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : active ? 'Current state' : 'Waiting'}</small></div></div> })}</div>
-              {order.lastError && <div className="transaction-error" role="alert"><strong>{order.lastError.code?.split('_').join(' ')}</strong><span>{order.lastError.message}</span>{order.lastError.retryable && <small>This issue can be retried without marking the transaction as completed.</small>}</div>}
-              {trackingError && <div className="transaction-error" role="alert"><strong>TRACKING UNAVAILABLE</strong><span>{trackingError}</span></div>}
-              {order.status === 'ZEC_CONFIRMED' && <button className="primary" disabled={payoutLoading} onClick={async () => { setPayoutLoading(true); setTrackingError(''); try { const r=await fetch(`/api/orders/${encodeURIComponent(order.id)}/payout`,{method:'POST'}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'Payout failed'); setOrder(d.order); showToast('Fiat payout completed.') } catch(e) { setTrackingError(e instanceof Error?e.message:'Payout failed.') } finally { setPayoutLoading(false) } }}>{payoutLoading ? 'Processing payout…' : 'Process fiat payout'} <span>→</span></button>}
-              {order.status === 'PAYOUT_FAILED' && <button className="primary" disabled={payoutLoading} onClick={async () => { setPayoutLoading(true); try { const r=await fetch(`/api/orders/${encodeURIComponent(order.id)}/payout`,{method:'POST'}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'Payout retry failed'); setOrder(d.order) } catch(e) { setTrackingError(e instanceof Error?e.message:'Payout retry failed.') } finally { setPayoutLoading(false) } }}>{payoutLoading ? 'Retrying…' : 'Retry payout'} <span>↻</span></button>}
-              {['AWAITING_ZEC','ZEC_DETECTED','CONFIRMING','UNDERPAID'].includes(order.status) && <button className="secondary full-secondary" onClick={async()=>{try{const r=await fetch(`/api/orders/${encodeURIComponent(order.id)}/cancel`,{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.error);setOrder(d.order)}catch(e){setTrackingError(e instanceof Error?e.message:'Cancellation failed.')}}}>Cancel transaction</button>}
-              {order.status === 'COMPLETED' && <div className="completion-card"><span>✓</span><div><strong>Transaction completed</strong><p>The payout provider confirmed delivery of {formatFiat(order.fiatAmount, order.fiatCurrency)}. Reference: {order.payout?.referenceId || 'sandbox'}</p></div></div>}
+              <div className="card-head details-head">
+                <div><span className="kicker">TRANSACTION TRACKING</span><h2>Track your transaction</h2><p className="subhead">This timeline reflects the transaction state stored by the backend. It refreshes automatically while this page is open.</p></div>
+                <span className={`secure-chip ${order.status === 'COMPLETED' ? 'success' : ''}`}>● {STATUS_LABELS[order.status]}</span>
+              </div>
+              <div className="tracking-id"><span>TRANSACTION / ORDER ID</span><strong>{order.id}</strong></div>
+              <div className="tracking-summary">
+                <div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div>
+                <div><span>Required ZEC</span><strong>{formatZec(order.requiredZec)} ZEC</strong></div>
+                <div><span>Recipient</span><strong>{order.recipient.accountName}</strong></div>
+                <div><span>Destination</span><strong>{order.recipient.country} · {order.fiatCurrency}</strong></div>
+              </div>
+              <div className="tracking-live"><span className="tracking-live-dot" /> <div><strong>Live transaction state</strong><p>Last checked from the backend automatically. Tracking refresh cycle: 5 seconds.</p></div></div>
+              {order.lastError && <div className="transaction-error" role="alert"><strong>{order.lastError.code.replaceAll('_', ' ')}</strong><span>{order.lastError.message}</span>{order.lastError.retryable && <small>You can retry the affected step. This transaction cannot become completed unless the backend reaches a valid payout-confirmed state.</small>}</div>}
+              <div className="tracking-timeline" aria-label="Transaction progress">
+                {getTrackingStages(order.status).map((stage) => {
+                  const timestamp = order.statusTimestamps?.[stage.status]
+                  return <div key={stage.status} className={`tracking-stage ${stage.done ? 'done' : ''} ${stage.current ? 'current' : ''}`}>
+                    <div className="tracking-stage-marker">{stage.done ? '✓' : stage.current ? '●' : ''}</div>
+                    <div><strong>{stage.label}</strong>{timestamp && <small>{new Date(timestamp).toLocaleString()}</small>}{stage.current && <p>Current transaction state</p>}</div>
+                  </div>
+                })}
+                {!CORE_STATUS_FLOW.includes(order.status) && <div className={`tracking-stage exception ${order.status === 'COMPLETED' ? 'done' : 'current'}`}><div className="tracking-stage-marker">!</div><div><strong>{STATUS_LABELS[order.status]}</strong>{order.statusTimestamps?.[order.status] && <small>{new Date(order.statusTimestamps[order.status]!).toLocaleString()}</small>}<p>Exceptional transaction state</p></div></div>}
+              </div>
+              {order.payment && <div className="tracking-payment"><span>ZEC PAYMENT</span><div><strong>{formatZec(order.payment.receivedZec)} ZEC</strong><small>{order.payment.txid}</small></div><div><strong>{order.payment.confirmations} / {order.payment.requiredConfirmations}</strong><small>confirmations</small></div></div>}
+              {order.payout && <div className="tracking-payment"><span>FIAT PAYOUT</span><div><strong>{formatFiat(order.payout.amount, order.payout.currency)}</strong><small>{order.payout.provider}</small></div><div><strong>{order.payout.status}</strong><small>{order.payout.providerReference || 'Provider reference pending'}</small></div></div>}
+              {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Status unavailable.</strong><span>{paymentMonitorError}</span></div>}
+              <div className="button-row">{['AWAITING_ZEC','ZEC_DETECTED','CONFIRMING','UNDERPAID','OVERPAID'].includes(order.status) && <button className="secondary" onClick={cancelTransaction} disabled={cancellingOrder}>{cancellingOrder ? 'Cancelling…' : 'Cancel transaction'}</button>}<button className="secondary" onClick={() => setStep(5)}>← Back to payment</button>{(order.status === 'ZEC_CONFIRMED' || order.status === 'PAYOUT_FAILED') && <button className="primary" onClick={() => setStep(5)}>Manage payout <span>→</span></button>}</div>
             </>}
+
           </div>
           <div className="card-foot"><span>🔒</span> Privacy-first flow · Recipient data is kept in memory for the current flow</div>
         </section>
       </main>
 
       <section className="feature-strip"><div><span className="feature-icon">◎</span><div><strong>Guided flow</strong><p>Amount → recipient → review.</p></div></div><div><span className="feature-icon">⌁</span><div><strong>Clear validation</strong><p>Errors appear beside the field that needs attention.</p></div></div><div><span className="feature-icon">◈</span><div><strong>Privacy by design</strong><p>No unnecessary sensitive data is exposed.</p></div></div></section>
-      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 12 · Integration & Final Polish</span></footer>
+      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 12 · Final Integration & Demo Ready</span></footer>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )

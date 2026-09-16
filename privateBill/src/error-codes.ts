@@ -1,4 +1,4 @@
-export const ERROR_CODES = Object.freeze({
+export const ERROR_CODES = {
   UNDERPAYMENT: 'UNDERPAYMENT',
   OVERPAYMENT: 'OVERPAYMENT',
   TRANSACTION_EXPIRED: 'TRANSACTION_EXPIRED',
@@ -8,9 +8,8 @@ export const ERROR_CODES = Object.freeze({
   INVALID_RECIPIENT: 'INVALID_RECIPIENT',
   PAYOUT_FAILED: 'PAYOUT_FAILED',
   DUPLICATE_PROCESSING: 'DUPLICATE_PROCESSING',
-  CANCELLED: 'CANCELLED'
-})
+  CANCELLED: 'CANCELLED',
+} as const
 
-export function makeError(code, message, { retryable = false, details } = {}) {
-  return { code, message, retryable, ...(details === undefined ? {} : { details }), at: new Date().toISOString() }
-}
+export type TransactionErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES]
+export type TransactionError = { code: TransactionErrorCode; message: string; retryable: boolean; at: string; details?: unknown }

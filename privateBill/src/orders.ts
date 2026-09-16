@@ -1,6 +1,7 @@
 import type { Currency } from './conversion'
+import type { TransactionStatus } from './status-engine'
 
-export type OrderStatus = 'CREATED'|'AWAITING_ZEC'|'ZEC_DETECTED'|'CONFIRMING'|'ZEC_CONFIRMED'|'PAYOUT_PROCESSING'|'FIAT_SENT'|'COMPLETED'|'EXPIRED'|'UNDERPAID'|'OVERPAID'|'PAYOUT_FAILED'|'CANCELLED'
+export type OrderStatus = TransactionStatus
 
 export type RecipientPaymentInfo = {
   providerName: string
@@ -19,14 +20,36 @@ export type TransactionOrder = {
   requiredZec: number
   recipient: RecipientPaymentInfo
   status: OrderStatus
+  statusHistory?: Array<{ from: OrderStatus | null; to: OrderStatus; at: string; reason: string }>
+  statusTimestamps?: Partial<Record<OrderStatus, string>>
   createdAt: string
   expiresAt: string
   depositAddress?: string
-  statusHistory?: Array<{ status: OrderStatus; at: string; reason?: string }>
-  statusTimestamps?: Record<string, string>
-  lastError?: { code: string; message: string; retryable?: boolean; at?: string } | null
-  payout?: { referenceId?: string; provider?: string; status?: string; processedAt?: string; attemptId?: string }
-  payoutAttempts?: Array<{ id: string; startedAt: string; provider: string }>
+  payout?: {
+    currency: 'NGN' | 'GHS'
+    amount: number
+    provider: string
+    status: 'PROCESSING' | 'SENT' | 'FAILED'
+    providerReference?: string
+    lastAttemptId?: string
+    sentAt?: string
+    failedAt?: string
+    error?: string
+    attempts: Array<{
+      attemptId: string
+      provider: string
+      providerReference?: string
+      status: 'PROCESSING' | 'SENT' | 'FAILED'
+      requestedAt: string
+      completedAt?: string
+      error?: string
+      recipient: RecipientPaymentInfo
+    }>
+    createdAt: string
+    updatedAt: string
+  }
+  lastError?: { code: string; message: string; retryable: boolean; at: string; details?: unknown } | null
+  errorHistory?: Array<{ code: string; message: string; retryable: boolean; at: string; details?: unknown }>
   payment?: {
     txid: string
     receivedZec: number
@@ -66,7 +89,7 @@ export function createTransactionOrder(input: Omit<TransactionOrder, 'id' | 'sta
   const order: TransactionOrder = {
     ...input,
     id: createOrderId(),
-    status: 'CREATED',
+    status: 'AWAITING_ZEC',
     createdAt: createdAt.toISOString(),
     expiresAt: new Date(createdAt.getTime() + ORDER_TTL_MS).toISOString(),
   }
@@ -94,6 +117,26 @@ export function updateTransactionPayment(id: string, payment: NonNullable<Transa
   if (existing.payment && existing.payment.txid !== payment.txid) return existing
 
   const updated = { ...existing, payment, status }
+  orders[index] = updated
+  writeOrders(orders)
+  return updated
+}
+
+export function syncTransactionStatus(
+  id: string,
+  status: OrderStatus,
+  statusHistory?: TransactionOrder['statusHistory'],
+  statusTimestamps?: TransactionOrder['statusTimestamps'],
+) {
+  const orders = readOrders()
+  const index = orders.findIndex(order => order.id === id)
+  if (index < 0) return null
+  const updated = {
+    ...orders[index],
+    status,
+    ...(statusHistory ? { statusHistory } : {}),
+    ...(statusTimestamps ? { statusTimestamps } : {}),
+  }
   orders[index] = updated
   writeOrders(orders)
   return updated
