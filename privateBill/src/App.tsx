@@ -6,10 +6,11 @@ import { createTransactionOrder, syncTransactionStatus, updateTransactionPayment
 import { BackendPaymentMonitor, paymentStatusLabel, type PaymentCheck } from './payment-monitor.ts'
 import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine'
 import { requestPayout } from './payout'
+import { fetchTransactionTracking, getTrackingStages } from './tracking'
 
 type CurrencyMeta = { name: string; symbol: string; flag: string; country: string }
 type BankDetails = { accountNumber: string; accountName: string; bankName: string; bankCode: string; country: string; currency: Currency }
-type Step = 1 | 2 | 3 | 4 | 5
+type Step = 1 | 2 | 3 | 4 | 5 | 6
 
 const CURRENCIES: Record<Currency, CurrencyMeta> = {
   NGN: { name: 'Nigerian Naira', symbol: '₦', flag: '🇳🇬', country: 'Nigeria' },
@@ -164,6 +165,36 @@ function App() {
 
     void checkPayment()
     interval = window.setInterval(() => void checkPayment(), 10_000)
+    return () => {
+      cancelled = true
+      if (interval) window.clearInterval(interval)
+    }
+  }, [step, order?.id, paymentMonitor])
+
+  // Quest 10: the tracking experience reads the persisted backend state.
+  // It never advances the UI on its own; polling only reflects server state.
+  useEffect(() => {
+    if (step !== 6 || !order) return
+    let cancelled = false
+    let interval: number | undefined
+
+    const refreshTracking = async () => {
+      try {
+        // Trigger the real backend payment monitor first so the tracker can
+        // reflect newly detected/confirmed ZEC rather than a simulated timer.
+        await paymentMonitor.check(order)
+        const tracking = await fetchTransactionTracking(order.id)
+        if (cancelled) return
+
+        const updated = syncTransactionStatus(order.id, tracking.status, tracking.statusHistory, tracking.statusTimestamps)
+        if (updated) setOrder(updated)
+      } catch (error) {
+        if (!cancelled) setPaymentMonitorError(error instanceof Error ? error.message : 'Transaction status is temporarily unavailable.')
+      }
+    }
+
+    void refreshTracking()
+    interval = window.setInterval(() => void refreshTracking(), 5_000)
     return () => {
       cancelled = true
       if (interval) window.clearInterval(interval)
@@ -337,9 +368,43 @@ function App() {
               </div>}
               {order.payout && <div className="payment-detection"><div><span>Payout status</span><strong>{order.payout.status}</strong></div><div><span>Provider</span><strong>{order.payout.provider}</strong></div><div><span>Attempts</span><strong>{order.payout.attempts.length}</strong></div><div><span>Reference</span><strong>{order.payout.providerReference ? order.payout.providerReference.slice(0, 18) + '…' : 'Pending'}</strong></div></div>}
               {payoutError && <div className="monitor-error" role="alert"><strong>Payout failed.</strong><span>{payoutError}</span>{order.status === 'PAYOUT_FAILED' && <button className="secondary" onClick={async () => { setOrder({ ...order, status: 'PAYOUT_FAILED' }) }}>Retry from the payout action</button>}</div>}
+              <div className="tracking-launch">
+                <div><span>TRANSACTION TRACKING</span><strong>Follow this transaction live</strong><p>The tracker reads the current transaction state from the backend.</p></div>
+                <button className="secondary" onClick={() => setStep(6)}>Track transaction →</button>
+              </div>
               {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Payment monitor unavailable.</strong><span>{paymentMonitorError}</span><button className="secondary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced) } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>Retry check</button></div>}
               <div className="button-row"><button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced); if (!result.payment) showToast('No qualifying ZEC payment detected yet.') } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>{checkingPayment ? 'Checking…' : 'Check payment status'} <span>↻</span></button></div>
             </>}
+
+            {step === 6 && order && <>
+              <div className="card-head details-head">
+                <div><span className="kicker">TRANSACTION TRACKING</span><h2>Track your transaction</h2><p className="subhead">This timeline reflects the transaction state stored by the backend. It refreshes automatically while this page is open.</p></div>
+                <span className={`secure-chip ${order.status === 'COMPLETED' ? 'success' : ''}`}>● {STATUS_LABELS[order.status]}</span>
+              </div>
+              <div className="tracking-id"><span>TRANSACTION / ORDER ID</span><strong>{order.id}</strong></div>
+              <div className="tracking-summary">
+                <div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div>
+                <div><span>Required ZEC</span><strong>{formatZec(order.requiredZec)} ZEC</strong></div>
+                <div><span>Recipient</span><strong>{order.recipient.accountName}</strong></div>
+                <div><span>Destination</span><strong>{order.recipient.country} · {order.fiatCurrency}</strong></div>
+              </div>
+              <div className="tracking-live"><span className="tracking-live-dot" /> <div><strong>Live transaction state</strong><p>Last checked from the backend automatically. Tracking refresh cycle: 5 seconds.</p></div></div>
+              <div className="tracking-timeline" aria-label="Transaction progress">
+                {getTrackingStages(order.status).map((stage) => {
+                  const timestamp = order.statusTimestamps?.[stage.status]
+                  return <div key={stage.status} className={`tracking-stage ${stage.done ? 'done' : ''} ${stage.current ? 'current' : ''}`}>
+                    <div className="tracking-stage-marker">{stage.done ? '✓' : stage.current ? '●' : ''}</div>
+                    <div><strong>{stage.label}</strong>{timestamp && <small>{new Date(timestamp).toLocaleString()}</small>}{stage.current && <p>Current transaction state</p>}</div>
+                  </div>
+                })}
+                {!CORE_STATUS_FLOW.includes(order.status) && <div className={`tracking-stage exception ${order.status === 'COMPLETED' ? 'done' : 'current'}`}><div className="tracking-stage-marker">!</div><div><strong>{STATUS_LABELS[order.status]}</strong>{order.statusTimestamps?.[order.status] && <small>{new Date(order.statusTimestamps[order.status]!).toLocaleString()}</small>}<p>Exceptional transaction state</p></div></div>}
+              </div>
+              {order.payment && <div className="tracking-payment"><span>ZEC PAYMENT</span><div><strong>{formatZec(order.payment.receivedZec)} ZEC</strong><small>{order.payment.txid}</small></div><div><strong>{order.payment.confirmations} / {order.payment.requiredConfirmations}</strong><small>confirmations</small></div></div>}
+              {order.payout && <div className="tracking-payment"><span>FIAT PAYOUT</span><div><strong>{formatFiat(order.payout.amount, order.payout.currency)}</strong><small>{order.payout.provider}</small></div><div><strong>{order.payout.status}</strong><small>{order.payout.providerReference || 'Provider reference pending'}</small></div></div>}
+              {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Status unavailable.</strong><span>{paymentMonitorError}</span></div>}
+              <div className="button-row"><button className="secondary" onClick={() => setStep(5)}>← Back to payment</button>{(order.status === 'ZEC_CONFIRMED' || order.status === 'PAYOUT_FAILED') && <button className="primary" onClick={() => setStep(5)}>Manage payout <span>→</span></button>}</div>
+            </>}
+
           </div>
           <div className="card-foot"><span>🔒</span> Privacy-first flow · Recipient data is kept in memory for the current flow</div>
         </section>
