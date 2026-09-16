@@ -1,189 +1,85 @@
-# Private Bill — Quest 09
+# Private Bill — Quest 10
 
-## Fiat Payout Layer
+## Transaction Tracking
 
-Quest 09 adds a provider-independent fiat payout layer to the Private Bill transaction lifecycle.
+Quest 10 adds the transaction tracking experience to the Private Bill flow. The tracker reads the persisted transaction state from the backend and does not simulate progress with a frontend timer.
 
-The application now keeps internal transaction logic separate from the external payout provider. Until a production payout provider is approved/configured, the backend uses a controlled mock provider for NGN/GHS sandbox testing.
-
-## Lifecycle
+## Tracking lifecycle
 
 ```text
-CREATED
-  ↓
-AWAITING_ZEC
-  ↓
-ZEC_DETECTED
-  ↓
-CONFIRMING
-  ↓
-ZEC_CONFIRMED
-  ↓
-PAYOUT_PROCESSING
-  ↓
-FIAT_SENT
-  ↓
-COMPLETED
+Waiting for ZEC
+    ↓
+Payment Detected
+    ↓
+Confirming
+    ↓
+ZEC Confirmed
+    ↓
+Processing Payout
+    ↓
+Fiat Sent
+    ↓
+Completed
 ```
 
-Exceptional states remain available:
-
-- EXPIRED
-- UNDERPAID
-- OVERPAID
-- PAYOUT_FAILED
-- CANCELLED
-
-## Payout architecture
+The underlying statuses are the Q8/Q9 transaction states:
 
 ```text
-                    Transaction Order
-                           |
-                     ZEC_CONFIRMED
-                           |
-                    Payout Service
-                           |
-                 +---------+---------+
-                 |                   |
-            Provider API        Mock Provider
-                 |                   |
-                 +---------+---------+
-                           |
-                    Payout Result
-                           |
-             provider/reference ID
-                           |
-               FIAT_SENT / FAILED
+AWAITING_ZEC → ZEC_DETECTED → CONFIRMING → ZEC_CONFIRMED
+             → PAYOUT_PROCESSING → FIAT_SENT → COMPLETED
 ```
 
-The application calls the provider through `src/payout-service.mjs`. The transaction/order layer does not depend on a specific bank, mobile-money operator, or payment API.
+Exceptional states such as `EXPIRED`, `UNDERPAID`, `OVERPAID`, `PAYOUT_FAILED`, and `CANCELLED` are displayed as exception states rather than being hidden or converted into a fake progress step.
 
-## Provider interface
+## Actual backend state
 
-The provider contract is:
-
-```js
-sendPayout({ orderId, currency, amount, recipient })
-```
-
-The current implementation is `MockPayoutProvider`.
-
-Supported currencies:
-
-- NGN
-- GHS
-
-The mock provider returns a provider name and unique provider reference. It can also be switched into deterministic failure mode for testing.
-
-## Configuration
-
-Copy `.env.example` to `.env` and keep secrets local.
-
-```env
-PAYOUT_PROVIDER=mock
-MOCK_PAYOUT_MODE=success
-```
-
-Use:
-
-```env
-MOCK_PAYOUT_MODE=success
-```
-
-to test successful payouts, or:
-
-```env
-MOCK_PAYOUT_MODE=failed
-```
-
-to test `PAYOUT_FAILED`.
-
-No production API key is required for the mock provider.
-
-## API
-
-### Get payout state
+The frontend calls:
 
 ```http
-GET /api/orders/:orderId/payout
+GET /api/orders/:orderId/status
 ```
 
-### Start or retry payout
+The response includes:
 
-```http
-POST /api/orders/:orderId/payout
-```
+- transaction/order ID
+- current status
+- status history
+- status timestamps
 
-A payout can only start when the transaction is:
+While the tracking page is open, it refreshes every 5 seconds. The refresh also invokes the existing backend payment monitor so newly detected or confirmed ZEC can update the real transaction state.
+
+The frontend only renders the state returned by the backend. It does not advance statuses based on elapsed time.
+
+## Transaction summary
+
+The tracker displays:
+
+- Order ID
+- fiat amount and currency
+- required ZEC
+- recipient name
+- destination country/currency
+- detected ZEC payment details when available
+- payout status/reference when available
+- timestamps for completed lifecycle stages
+
+## Architecture
 
 ```text
-ZEC_CONFIRMED
+Zebra / Zakura
+      ↓
+Payment Monitor
+      ↓
+Transaction Status Engine
+      ↓
+/api/orders/:orderId/status
+      ↓
+Transaction Tracking UI
 ```
 
-A failed payout can be retried from:
+The tracking layer is implemented in `src/tracking.ts`. It provides the backend status fetcher and maps the persisted lifecycle into visual tracking stages.
 
-```text
-PAYOUT_FAILED
-```
-
-The backend transitions the transaction through:
-
-```text
-ZEC_CONFIRMED
-→ PAYOUT_PROCESSING
-→ FIAT_SENT
-→ COMPLETED
-```
-
-or, on provider failure:
-
-```text
-PAYOUT_PROCESSING
-→ PAYOUT_FAILED
-```
-
-## Payout attempts
-
-Each attempt records:
-
-- internal attempt ID
-- provider
-- provider reference when available
-- processing status
-- requested/completed timestamps
-- recipient snapshot
-- error information on failure
-
-Repeated recording of the same attempt ID is idempotent.
-
-## Recipient handling
-
-The payout service uses the recipient details already attached to the transaction:
-
-- provider name/code
-- provider type
-- account number
-- account name
-- country
-- currency
-
-The frontend never receives or stores provider credentials.
-
-## Security
-
-Never commit:
-
-- API keys
-- provider secrets
-- RPC credentials
-- RPC cookies
-- private keys
-- seed phrases
-- wallet files
-
-`.env` is ignored by Git. Only `.env.example` is committed.
-
-## Local test
+## Running
 
 ```bash
 npm install
@@ -192,26 +88,12 @@ npm test
 npm run build
 ```
 
-Start the backend:
+Start the frontend and backend with:
 
 ```bash
-npm run server
+npm run dev:full
 ```
 
-With `MOCK_PAYOUT_MODE=success`, create/fund an order until it reaches `ZEC_CONFIRMED`, then call:
+## Security
 
-```bash
-curl -X POST http://127.0.0.1:8787/api/orders/PB-YOUR-ORDER-ID/payout
-```
-
-For failure testing, set:
-
-```env
-MOCK_PAYOUT_MODE=failed
-```
-
-restart the backend and retry the payout. The order should enter `PAYOUT_FAILED`, with the failed attempt persisted.
-
-## Scope
-
-This quest implements the payout abstraction and controlled mock/sandbox flow. It does **not** claim to send real NGN/GHS through a production bank or mobile-money provider. A production provider must be approved and integrated behind the same provider interface before real fiat payouts are enabled.
+No RPC credentials, payout credentials, cookies, private keys, or provider secrets are exposed in the frontend or committed to GitHub.
