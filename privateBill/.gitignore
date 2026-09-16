@@ -1,8 +1,8 @@
 node_modules/
+dist/
 .env
 .env.*
 !.env.example
-dist/
-*.log
 data/*.json
-!data/.gitkeep
+*.log
+.DS_Store

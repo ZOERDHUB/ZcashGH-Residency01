@@ -1,116 +1,189 @@
-# Private Bill — Quest 11
+# Private Bill — Quest 12 · Integration, Testing & Final Polish
 
-## Transaction Errors & Exceptions
+Private Bill is a privacy-first Zcash-to-fiat transaction flow for NGN and GHS. Quest 12 integrates the residency work into one demonstrable lifecycle and adds final validation, state tracking, exception handling, and a controlled sandbox payout.
 
-Quest 11 adds the transaction error and exception handling experience to the Private Bill flow. The tracker reads the persisted transaction state from the backend and does not simulate progress with a frontend timer.
-
-## Tracking lifecycle
+## Complete flow
 
 ```text
-Waiting for ZEC
-    ↓
-Payment Detected
-    ↓
-Confirming
-    ↓
-ZEC Confirmed
-    ↓
-Processing Payout
-    ↓
-Fiat Sent
-    ↓
-Completed
+NGN / GHS
+  ↓
+Fiat amount
+  ↓
+Live ZEC conversion
+  ↓
+Recipient bank / fintech details
+  ↓
+Review
+  ↓
+Create order
+  ↓
+AWAITING_ZEC
+  ↓
+ZEC_DETECTED
+  ↓
+CONFIRMING
+  ↓
+ZEC_CONFIRMED
+  ↓
+PAYOUT_PROCESSING
+  ↓
+FIAT_SENT
+  ↓
+COMPLETED
 ```
 
-The underlying statuses are the Q8/Q9 transaction states:
+Exceptional states are handled as well: `EXPIRED`, `UNDERPAID`, `OVERPAID`, `PAYOUT_FAILED`, and `CANCELLED`.
+
+## What Quest 12 integrates
+
+- Live NGN/GHS → ZEC conversion from the earlier conversion layer.
+- Recipient selection covering Nigerian and Ghanaian providers, including banks and fintech/mobile-money entries in the existing provider catalogue.
+- Review and order creation.
+- Persistent server-side order state and timestamps.
+- Real payment monitoring through the existing Zebra/Zakura adapter architecture.
+- ZEC payment detection, amount accounting, confirmation tracking and idempotency.
+- Provider-independent fiat payout service.
+- Controlled `private-bill-sandbox` payout provider for demonstration/testing.
+- Backend transaction tracking endpoint consumed by the frontend.
+- Error and exception persistence with `lastError` / `errorHistory`.
+- Retry-safe payout handling and duplicate-processing protection.
+- Responsive tracking UI for desktop and mobile.
+
+## Transaction state machine
+
+The backend owns the state machine. The browser cannot mark an order completed.
 
 ```text
-AWAITING_ZEC → ZEC_DETECTED → CONFIRMING → ZEC_CONFIRMED
-             → PAYOUT_PROCESSING → FIAT_SENT → COMPLETED
+CREATED → AWAITING_ZEC → ZEC_DETECTED → CONFIRMING → ZEC_CONFIRMED
+                                                     ↓
+                                             PAYOUT_PROCESSING
+                                                     ↓
+                                                FIAT_SENT
+                                                     ↓
+                                                 COMPLETED
 ```
 
-Exceptional states such as `EXPIRED`, `UNDERPAID`, `OVERPAID`, `PAYOUT_FAILED`, and `CANCELLED` are displayed as exception states rather than being hidden or converted into a fake progress step.
+Invalid transitions such as `ZEC_CONFIRMED → COMPLETED` are rejected. Fiat completion requires the payout path.
 
-## Actual backend state
+## Nodes
 
-The frontend calls:
+The payment layer remains compatible with the residency's node architecture:
 
-```http
-GET /api/orders/:orderId/status
+- Zebra
+- Zakurad / Zakura-compatible RPC
+- network selection through the existing node configuration
+- transparent-address payment detection in the current implementation
+
+The application does not treat a wallet's local “sent” confirmation as proof of payment. The backend monitor must observe the payment through the configured Zcash node layer.
+
+## Payout provider
+
+Quest 12 uses `private-bill-sandbox` by default. This is deliberate: no production payout credentials are embedded in the frontend or repository.
+
+To exercise the failure path locally:
+
+```bash
+PRIVATE_BILL_PAYOUT_MODE=fail npm run server
 ```
 
-The response includes:
+A normal run uses the successful sandbox response and records a provider/reference ID.
 
-- transaction/order ID
-- current status
-- status history
-- status timestamps
+## Environment
 
-While the tracking page is open, it refreshes every 5 seconds. The refresh also invokes the existing backend payment monitor so newly detected or confirmed ZEC can update the real transaction state.
+Copy the example file:
 
-The frontend only renders the state returned by the backend. It does not advance statuses based on elapsed time.
+```bash
+cp .env.example .env
+```
 
-## Transaction summary
+Never commit `.env` or real RPC credentials.
 
-The tracker displays:
-
-- Order ID
-- fiat amount and currency
-- required ZEC
-- recipient name
-- destination country/currency
-- detected ZEC payment details when available
-- payout status/reference when available
-- timestamps for completed lifecycle stages
-
-## Exception handling
-
-| Scenario | Handling | Completion safety |
-|---|---|---|
-| Underpayment | Marks `UNDERPAID`, explains the shortfall, allows additional funding | Cannot enter payout from the exception state |
-| Overpayment | Marks `OVERPAID` and blocks payout until resolved | Never auto-completes or auto-pays |
-| Expired transaction | Marks `EXPIRED`; late funding is not silently accepted | Terminal exception state |
-| Payment not detected | Shows a retryable message while remaining `AWAITING_ZEC` | No client-side success assumption |
-| Exchange-rate failure | Blocks order creation until a live quote is available | No order is created from a failed quote |
-| Zcash/network failure | Returns a retryable `ZCASH_NETWORK_UNAVAILABLE` error without advancing state | Existing transaction state is preserved |
-| Invalid recipient | Validates recipient details server-side and returns `INVALID_RECIPIENT` | Payout does not start |
-| Payout failure | Records provider error and moves to `PAYOUT_FAILED` | Cannot become `COMPLETED` from failure |
-| Duplicate processing | Rejects concurrent/already-processing payout attempts | Prevents a second payout attempt |
-| Cancelled transaction | Records `CANCELLED` and blocks payout | Cancelled orders cannot complete |
-
-Error records are persisted as `lastError` plus a bounded `errorHistory`, while transient node failures are returned without changing the transaction status.
-
-## Architecture
+Important variables include:
 
 ```text
-Zebra / Zakura
-      ↓
-Payment Monitor
-      ↓
-Transaction Status Engine
-      ↓
-/api/orders/:orderId/status
-      ↓
-Transaction Errors & Exceptions UI
+PRIVATE_BILL_NETWORK=testnet
+ZCASH_REQUIRED_CONFIRMATIONS=3
+PRIVATE_BILL_DB=./data/private-bill.json
+PRIVATE_BILL_PAYOUT_MODE=success
+VITE_ZEC_RECEIVING_ADDRESS=...
 ```
 
-The tracking layer is implemented in `src/tracking.ts`. It provides the backend status fetcher and maps the persisted lifecycle into visual tracking stages.
+Use the existing Zebra/Zakurad node configuration for the selected network. Do not put RPC cookies, passwords, wallet credentials, seeds, private keys or API secrets in frontend code.
 
-## Running
+## Development
 
 ```bash
 npm install
 npm run check
 npm test
 npm run build
+npm run server
 ```
 
-Start the frontend and backend with:
+Frontend:
+
+```bash
+npm run dev
+```
+
+Full local development:
 
 ```bash
 npm run dev:full
 ```
 
+## Automated verification
+
+`npm test` covers:
+
+- payment-state classification
+- underpayment / overpayment / expiration
+- valid lifecycle transitions
+- invalid transition rejection
+- completion safety
+- persistent status timestamps
+- payout provider success
+- error persistence
+
+## Demonstration checklist
+
+1. Select NGN or GHS.
+2. Enter the fiat amount and wait for the live ZEC quote.
+3. Select a recipient provider and enter account details.
+4. Review the transaction.
+5. Create the order.
+6. Copy the ZEC receiving address.
+7. Send the required ZEC from the configured test wallet/node environment.
+8. Watch the backend move through detection and confirmations.
+9. Reach `ZEC_CONFIRMED`.
+10. Run the sandbox payout.
+11. Verify `PAYOUT_PROCESSING → FIAT_SENT → COMPLETED`.
+12. Open the tracking view and verify timestamps and order ID.
+
+## Failure-path checklist
+
+Test at least:
+
+- insufficient ZEC → `UNDERPAID`
+- excess ZEC → `OVERPAID`
+- no payment → `AWAITING_ZEC`
+- expired order → `EXPIRED`
+- payout provider failure → `PAYOUT_FAILED`
+- payout retry → `PAYOUT_PROCESSING`
+- cancellation before confirmation → `CANCELLED`
+- invalid recipient → order creation rejected
+- unavailable Zcash node → retryable backend error
+
 ## Security
 
-No RPC credentials, payout credentials, cookies, private keys, or provider secrets are exposed in the frontend or committed to GitHub.
+No seed phrase, private key, wallet credential or payout secret is required by the frontend. Production payout credentials belong exclusively in server-side infrastructure and should be injected through the deployment environment.
+
+## Quest
+
+Branch:
+
+```text
+quest/12-0xweb3devrel
+```
+
+This branch is the final integration and polish submission for the Private Bill residency sequence.
