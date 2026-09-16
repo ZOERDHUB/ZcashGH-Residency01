@@ -1,12 +1,7 @@
 import type { TransactionOrder } from './orders'
+import type { TransactionStatus } from './status-engine'
 
-export type PaymentState =
-  | 'AWAITING_ZEC'
-  | 'PAYMENT_DETECTED'
-  | 'CONFIRMING'
-  | 'CONFIRMED'
-  | 'PAYMENT_UNDERPAID'
-  | 'EXPIRED'
+export type PaymentState = TransactionStatus
 
 export type NodeName = 'zebra' | 'zakura'
 export type NetworkName = 'mainnet' | 'testnet' | 'regtest'
@@ -28,6 +23,8 @@ export type PaymentCheck = {
   source: NodeName | 'unavailable'
   network: NetworkName
   error?: string
+  statusHistory?: TransactionOrder['statusHistory']
+  statusTimestamps?: TransactionOrder['statusTimestamps']
 }
 
 export interface PaymentMonitor {
@@ -46,7 +43,7 @@ export class BackendPaymentMonitor implements PaymentMonitor {
     if (!response.ok && response.status !== 503) {
       throw new Error(data.error || `Payment monitor returned ${response.status}`)
     }
-    const validStates: PaymentState[] = ['AWAITING_ZEC', 'PAYMENT_DETECTED', 'CONFIRMING', 'CONFIRMED', 'PAYMENT_UNDERPAID', 'EXPIRED']
+    const validStates: PaymentState[] = ['CREATED', 'AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'ZEC_CONFIRMED', 'PAYOUT_PROCESSING', 'FIAT_SENT', 'COMPLETED', 'EXPIRED', 'UNDERPAID', 'OVERPAID', 'PAYOUT_FAILED', 'CANCELLED']
     if (!data.state || !validStates.includes(data.state)) throw new Error('Payment monitor returned an invalid state.')
     return {
       state: data.state,
@@ -55,18 +52,27 @@ export class BackendPaymentMonitor implements PaymentMonitor {
       source: data.source === 'zebra' || data.source === 'zakura' ? data.source : 'unavailable',
       network: data.network === 'mainnet' || data.network === 'regtest' ? data.network : 'testnet',
       error: data.error,
+      statusHistory: data.statusHistory,
+      statusTimestamps: data.statusTimestamps,
     }
   }
 }
 
 export function paymentStatusLabel(state: PaymentState | TransactionOrder['status']) {
-  switch (state) {
-    case 'PAYMENT_DETECTED': return 'Payment detected'
-    case 'CONFIRMING': return 'Confirming on-chain'
-    case 'CONFIRMED':
-    case 'COMPLETED': return 'Payment confirmed'
-    case 'PAYMENT_UNDERPAID': return 'Payment amount incomplete'
-    case 'EXPIRED': return 'Order expired'
-    default: return 'Awaiting ZEC'
+  const labels: Record<PaymentState, string> = {
+    CREATED: 'Transaction created',
+    AWAITING_ZEC: 'Awaiting ZEC',
+    ZEC_DETECTED: 'ZEC detected',
+    CONFIRMING: 'Confirming on-chain',
+    ZEC_CONFIRMED: 'ZEC confirmed',
+    PAYOUT_PROCESSING: 'Payout processing',
+    FIAT_SENT: 'Fiat sent',
+    COMPLETED: 'Completed',
+    EXPIRED: 'Order expired',
+    UNDERPAID: 'Payment underpaid',
+    OVERPAID: 'Payment overpaid',
+    PAYOUT_FAILED: 'Payout failed',
+    CANCELLED: 'Transaction cancelled',
   }
+  return labels[state as PaymentState] ?? 'Transaction status'
 }

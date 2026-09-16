@@ -56,3 +56,58 @@
 .monitor-error span{opacity:.72;flex:1 1 280px}.monitor-error .secondary{padding:9px 12px}
 .secure-chip.success{border-color:rgba(96,211,148,.35)}
 @media (max-width:700px){.payment-detection{grid-template-columns:1fr}.monitor-error{align-items:flex-start}}
+
+
+.status-timeline {
+  display: grid;
+  gap: 0;
+  margin: 18px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(127,127,127,.2);
+  border-radius: 14px;
+}
+.status-timeline-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 10px;
+  min-height: 42px;
+  opacity: .45;
+}
+.status-timeline-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 12px;
+  bottom: -8px;
+  width: 1px;
+  background: currentColor;
+  opacity: .25;
+}
+.status-timeline-item.done,
+.status-timeline-item.current {
+  opacity: 1;
+}
+.status-timeline-item.current strong {
+  font-weight: 700;
+}
+.status-timeline-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+}
+.status-timeline-item.done .status-timeline-dot {
+  background: currentColor;
+}
+.status-timeline-item.current .status-timeline-dot {
+  box-shadow: 0 0 0 3px rgba(127,127,127,.14);
+}
+.status-timeline-item small {
+  display: block;
+  margin-top: 2px;
+  opacity: .65;
+  font-size: 11px;
+}

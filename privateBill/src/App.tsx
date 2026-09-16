@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { convertFiatToZec, type ConversionRates, type Currency } from './conversion'
 import { fetchConversionRates } from './market'
 import { DemoBankProvider, type Bank, type ProviderType } from './banks'
-import { createTransactionOrder, updateTransactionPayment, type TransactionOrder } from './orders'
-import { BackendPaymentMonitor, paymentStatusLabel, type PaymentCheck } from './payment-monitor'
+import { createTransactionOrder, syncTransactionStatus, updateTransactionPayment, type TransactionOrder } from './orders'
+import { BackendPaymentMonitor, paymentStatusLabel, type PaymentCheck } from './payment-monitor.ts'
+import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine'
 
 type CurrencyMeta = { name: string; symbol: string; flag: string; country: string }
 type BankDetails = { accountNumber: string; accountName: string; bankName: string; bankCode: string; country: string; currency: Currency }
@@ -25,6 +26,24 @@ function formatZec(value: number) { return value.toFixed(ZEC_DECIMALS) }
 function formatUsd(value: number) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value) }
 function formatRate(value: number, currency: Currency) { return new Intl.NumberFormat('en-US', { maximumFractionDigits: currency === 'NGN' ? 2 : 4, minimumFractionDigits: currency === 'NGN' ? 2 : 4 }).format(value) }
 function maskAccount(value: string) { return value.length <= 4 ? '••••' : `•••• ${value.slice(-4)}` }
+function toOrderPayment(payment: NonNullable<PaymentCheck['payment']>) {
+  return {
+    txid: payment.txid,
+    receivedZec: payment.amountZec,
+    confirmations: payment.confirmations,
+    requiredConfirmations: payment.requiredConfirmations,
+    detectedAt: payment.detectedAt ?? new Date().toISOString(),
+    address: payment.address,
+  }
+}
+
+function statusStepClass(status: TransactionStatus, current: TransactionStatus) {
+  const currentIndex = CORE_STATUS_FLOW.indexOf(current)
+  const index = CORE_STATUS_FLOW.indexOf(status)
+  if (status === current) return 'current'
+  if (index >= 0 && currentIndex >= 0 && index < currentIndex) return 'done'
+  return ''
+}
 
 function App() {
   const [currency, setCurrency] = useState<Currency>('NGN')
@@ -124,11 +143,15 @@ function App() {
         const result = await paymentMonitor.check(order)
         if (cancelled) return
         setPaymentCheck(result)
+        let updated = order
         if (result.payment) {
-          const nextStatus = result.state === 'CONFIRMED' ? 'COMPLETED' : result.state
-          const updated = updateTransactionPayment(order.id, result.payment, nextStatus as TransactionOrder['status'])
-          if (updated) setOrder(updated)
+          const paymentStatus = result.state as TransactionOrder['status']
+          const withPayment = updateTransactionPayment(order.id, toOrderPayment(result.payment), paymentStatus)
+          if (withPayment) updated = withPayment
         }
+        const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps)
+        if (synced) updated = synced
+        setOrder(updated)
       } catch (error) {
         if (!cancelled) setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.')
       } finally {
@@ -152,8 +175,15 @@ function App() {
   }
   const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const registerOrderWithMonitor = async (created: TransactionOrder) => {
-    const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(created) })
-    if (!response.ok) throw new Error('The transaction order could not be registered with the payment monitor.')
+    const response = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(created),
+    })
+    const data = await response.json() as TransactionOrder & { error?: string }
+    if (!response.ok) throw new Error(data.error || 'The transaction order could not be registered with the payment monitor.')
+    setOrder(data)
+    return data
   }
   const continueToDetails = () => {
     if (numericAmount < MIN_AMOUNT[currency]) return showToast(amountError || 'Enter a valid amount.')
@@ -244,7 +274,6 @@ function App() {
                   showToast(error instanceof Error ? error.message : 'Payment monitor registration failed.')
                   return
                 }
-                setOrder(created)
                 setPaymentCheck(null)
                 setPaymentMonitorError('')
                 setStep(4)
@@ -264,12 +293,23 @@ function App() {
               <div className="payment-hero"><span>YOU NEED TO SEND</span><strong>{formatZec(order.requiredZec)} <small>ZEC</small></strong><p>Order <b>{order.id}</b> will only be funded after a trusted payment monitor detects the on-chain payment.</p></div>
               <div className="payment-address"><div className="payment-address-head"><div><span className="field-label">ZEC RECEIVING ADDRESS</span><small>Payment destination assigned to this transaction</small></div><span className="address-badge">ZEC</span></div><div className="address-row"><code>{order.depositAddress || ZEC_RECEIVING_ADDRESS}</code><button className="copy-button" onClick={async () => { try { await navigator.clipboard.writeText(order.depositAddress || ZEC_RECEIVING_ADDRESS); setAddressCopied(true); window.setTimeout(() => setAddressCopied(false), 2200) } catch { showToast('Copy failed. Please copy the address manually.') } }} aria-label="Copy ZEC receiving address">{addressCopied ? '✓ Copied' : 'Copy address'}</button></div></div>
               <div className="payment-meta"><div><span>Order ID</span><strong>{order.id}</strong></div><div><span>Current status</span><strong>{paymentStatusLabel(paymentCheck?.state ?? order.status as never)}</strong></div><div><span>Recipient receives</span><strong>{formatFiat(order.fiatAmount, order.fiatCurrency)}</strong></div><div><span>Destination</span><strong>{order.recipient.country} · {order.fiatCurrency}</strong></div><div><span>Payment expires</span><strong>{new Date(order.expiresAt).toLocaleString()}</strong></div><div><span>Last checked</span><strong>{paymentCheck ? new Date(paymentCheck.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Not checked yet'}</strong></div></div>
-              <div className={`monitor-status ${paymentCheck?.state === 'CONFIRMED' ? 'is-confirmed' : ''}`}><div className="monitor-dot" /><div><strong>{paymentStatusLabel(paymentCheck?.state ?? order.status as never)}</strong><p>{checkingPayment ? 'Checking the payment monitor…' : paymentMonitorError ? 'The monitor could not be reached. The order remains unfunded until a trusted check succeeds.' : paymentCheck?.payment ? `${formatZec(paymentCheck.payment.amountZec)} ZEC detected in transaction ${paymentCheck.payment.txid.slice(0, 12)}… with ${paymentCheck.payment.confirmations} confirmation${paymentCheck.payment.confirmations === 1 ? '' : 's'}.` : 'No qualifying payment has been detected yet. This screen never treats a client-side “sent” action as proof of payment.'}</p></div></div>
+              <div className="status-timeline" aria-label="Transaction status timeline">
+                {CORE_STATUS_FLOW.map(status => {
+                  const currentStatus = (paymentCheck?.state ?? order.status) as TransactionStatus
+                  return (
+                    <div key={status} className={`status-timeline-item ${statusStepClass(status, currentStatus)}`}>
+                      <span className="status-timeline-dot" />
+                      <div><strong>{STATUS_LABELS[status]}</strong><small>{order.statusTimestamps?.[status] ? new Date(order.statusTimestamps[status]!).toLocaleString() : 'Pending'}</small></div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className={`monitor-status ${paymentCheck?.state === 'ZEC_CONFIRMED' ? 'is-confirmed' : ''}`}><div className="monitor-dot" /><div><strong>{paymentStatusLabel(paymentCheck?.state ?? order.status as never)}</strong><p>{checkingPayment ? 'Checking the payment monitor…' : paymentMonitorError ? 'The monitor could not be reached. The order remains unfunded until a trusted check succeeds.' : paymentCheck?.payment ? `${formatZec(paymentCheck.payment.amountZec)} ZEC detected in transaction ${paymentCheck.payment.txid.slice(0, 12)}… with ${paymentCheck.payment.confirmations} confirmation${paymentCheck.payment.confirmations === 1 ? '' : 's'}.` : 'No qualifying payment has been detected yet. This screen never treats a client-side “sent” action as proof of payment.'}</p></div></div>
               {paymentCheck?.payment && <div className="payment-detection"><div><span>Detected amount</span><strong>{formatZec(paymentCheck.payment.amountZec)} ZEC</strong></div><div><span>Confirmations</span><strong>{paymentCheck.payment.confirmations} / {paymentCheck.payment.requiredConfirmations}</strong></div><div><span>Transaction</span><strong>{paymentCheck.payment.txid.slice(0, 18)}…</strong></div></div>}
               <div className="payment-instructions"><div className="instruction-icon">1</div><div><strong>Open your Zcash wallet</strong><p>Choose ZEC and prepare a payment to the order-specific address above.</p></div><div className="instruction-icon">2</div><div><strong>Send the required amount</strong><p>Send <b>{formatZec(order.requiredZec)} ZEC</b>. The backend monitor determines whether the required amount was actually received.</p></div><div className="instruction-icon">3</div><div><strong>Wait for detection and confirmations</strong><p>Keep this order ID. The application updates only from trusted payment-monitor data, not from a browser button.</p></div></div>
               <div className="payment-warning"><span>!</span><p><strong>Important:</strong> Do not rely on a wallet “sent” message as proof of funding. The order is not considered funded until the payment monitor detects the transaction at the correct address and records it against this order.</p></div>
-              {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Payment monitor unavailable.</strong><span>{paymentMonitorError}</span><button className="secondary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const nextStatus = result.state === 'CONFIRMED' ? 'COMPLETED' : result.state; const updated = updateTransactionPayment(order.id, result.payment, nextStatus as TransactionOrder['status']); if (updated) setOrder(updated) } } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>Retry check</button></div>}
-              <div className="button-row"><button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const nextStatus = result.state === 'CONFIRMED' ? 'COMPLETED' : result.state; const updated = updateTransactionPayment(order.id, result.payment, nextStatus as TransactionOrder['status']); if (updated) setOrder(updated) } else showToast('No qualifying ZEC payment detected yet.') } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>{checkingPayment ? 'Checking…' : 'Check payment status'} <span>↻</span></button></div>
+              {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Payment monitor unavailable.</strong><span>{paymentMonitorError}</span><button className="secondary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced) } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>Retry check</button></div>}
+              <div className="button-row"><button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced); if (!result.payment) showToast('No qualifying ZEC payment detected yet.') } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>{checkingPayment ? 'Checking…' : 'Check payment status'} <span>↻</span></button></div>
             </>}
           </div>
           <div className="card-foot"><span>🔒</span> Privacy-first flow · Recipient data is kept in memory for the current flow</div>
