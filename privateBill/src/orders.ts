@@ -25,6 +25,29 @@ export type TransactionOrder = {
   createdAt: string
   expiresAt: string
   depositAddress?: string
+  payout?: {
+    currency: 'NGN' | 'GHS'
+    amount: number
+    provider: string
+    status: 'PROCESSING' | 'SENT' | 'FAILED'
+    providerReference?: string
+    lastAttemptId?: string
+    sentAt?: string
+    failedAt?: string
+    error?: string
+    attempts: Array<{
+      attemptId: string
+      provider: string
+      providerReference?: string
+      status: 'PROCESSING' | 'SENT' | 'FAILED'
+      requestedAt: string
+      completedAt?: string
+      error?: string
+      recipient: RecipientPaymentInfo
+    }>
+    createdAt: string
+    updatedAt: string
+  }
   payment?: {
     txid: string
     receivedZec: number
