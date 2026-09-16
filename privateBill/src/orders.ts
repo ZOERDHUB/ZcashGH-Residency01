@@ -1,5 +1,5 @@
 import type { Currency } from './conversion'
-import type { TransactionStatus } from './status-engine'
+import type { TransactionStatus } from './status-engine.ts'
 
 export type OrderStatus = TransactionStatus
 

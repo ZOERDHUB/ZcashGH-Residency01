@@ -4,7 +4,7 @@ import { fetchConversionRates } from './market'
 import { DemoBankProvider, type Bank, type ProviderType } from './banks'
 import { createTransactionOrder, syncTransactionStatus, updateTransactionPayment, type TransactionOrder } from './orders'
 import { BackendPaymentMonitor, paymentStatusLabel, type PaymentCheck } from './payment-monitor.ts'
-import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine'
+import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine.ts'
 import { requestPayout } from './payout'
 import { fetchTransactionTracking, getTrackingStages } from './tracking'
 

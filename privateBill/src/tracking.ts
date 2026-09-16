@@ -1,5 +1,5 @@
 import type { TransactionOrder } from './orders'
-import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine'
+import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine.ts'
 
 export type TransactionTracking = {
   id: string
