@@ -5,6 +5,7 @@ import { DemoBankProvider, type Bank, type ProviderType } from './banks'
 import { createTransactionOrder, syncTransactionStatus, updateTransactionPayment, type TransactionOrder } from './orders'
 import { BackendPaymentMonitor, paymentStatusLabel, type PaymentCheck } from './payment-monitor.ts'
 import { CORE_STATUS_FLOW, STATUS_LABELS, type TransactionStatus } from './status-engine'
+import { requestPayout } from './payout'
 
 type CurrencyMeta = { name: string; symbol: string; flag: string; country: string }
 type BankDetails = { accountNumber: string; accountName: string; bankName: string; bankCode: string; country: string; currency: Currency }
@@ -67,6 +68,8 @@ function App() {
   const [addressCopied, setAddressCopied] = useState(false)
   const [paymentCheck, setPaymentCheck] = useState<PaymentCheck | null>(null)
   const [checkingPayment, setCheckingPayment] = useState(false)
+  const [processingPayout, setProcessingPayout] = useState(false)
+  const [payoutError, setPayoutError] = useState('')
   const [paymentMonitorError, setPaymentMonitorError] = useState('')
   const paymentMonitor = useMemo(() => new BackendPaymentMonitor(), [])
 
@@ -83,7 +86,7 @@ function App() {
   useEffect(() => {
     void loadRates()
     const interval = window.setInterval(() => void loadRates(), 60_000)
-    return () => window.clearInterval(interval)
+  return () => window.clearInterval(interval)
   }, [loadRates])
 
   const selected = CURRENCIES[currency]
@@ -174,6 +177,26 @@ function App() {
     setBankMenuOpen(false)
   }
   const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
+  const handlePayout = async () => {
+    if (!order || !['ZEC_CONFIRMED', 'PAYOUT_FAILED'].includes(order.status)) return
+    setProcessingPayout(true)
+    setPayoutError('')
+    try {
+      const result = await requestPayout(order.id)
+      if (result.order) {
+        setOrder(result.order)
+        showToast(result.order.status === 'COMPLETED' ? 'Fiat payout completed.' : 'Payout status updated.')
+      }
+    } catch (error) {
+      setPayoutError(error instanceof Error ? error.message : 'Payout failed.')
+      try {
+        const refreshed = await fetch(`http://127.0.0.1:8787/api/orders/${encodeURIComponent(order.id)}/payout`).then(r => r.json())
+        if (refreshed?.payout) setOrder({ ...order, status: refreshed.status, payout: refreshed.payout })
+      } catch {}
+    } finally {
+      setProcessingPayout(false)
+    }
+  }
   const registerOrderWithMonitor = async (created: TransactionOrder) => {
     const response = await fetch('/api/orders', {
       method: 'POST',
@@ -308,6 +331,12 @@ function App() {
               {paymentCheck?.payment && <div className="payment-detection"><div><span>Detected amount</span><strong>{formatZec(paymentCheck.payment.amountZec)} ZEC</strong></div><div><span>Confirmations</span><strong>{paymentCheck.payment.confirmations} / {paymentCheck.payment.requiredConfirmations}</strong></div><div><span>Transaction</span><strong>{paymentCheck.payment.txid.slice(0, 18)}…</strong></div></div>}
               <div className="payment-instructions"><div className="instruction-icon">1</div><div><strong>Open your Zcash wallet</strong><p>Choose ZEC and prepare a payment to the order-specific address above.</p></div><div className="instruction-icon">2</div><div><strong>Send the required amount</strong><p>Send <b>{formatZec(order.requiredZec)} ZEC</b>. The backend monitor determines whether the required amount was actually received.</p></div><div className="instruction-icon">3</div><div><strong>Wait for detection and confirmations</strong><p>Keep this order ID. The application updates only from trusted payment-monitor data, not from a browser button.</p></div></div>
               <div className="payment-warning"><span>!</span><p><strong>Important:</strong> Do not rely on a wallet “sent” message as proof of funding. The order is not considered funded until the payment monitor detects the transaction at the correct address and records it against this order.</p></div>
+              {(order.status === 'ZEC_CONFIRMED' || order.status === 'PAYOUT_FAILED') && <div className="payout-card">
+                <div><span className="kicker">FIAT PAYOUT</span><h3>{order.status === 'PAYOUT_FAILED' ? 'Retry the fiat payout' : 'Ready to pay the recipient'}</h3><p>{formatFiat(order.fiatAmount, order.fiatCurrency)} will be sent to {order.recipient.accountName} via {order.recipient.providerName}.</p></div>
+                <button className="primary" onClick={handlePayout} disabled={processingPayout}>{processingPayout ? 'Processing payout…' : order.status === 'PAYOUT_FAILED' ? 'Retry payout' : 'Process fiat payout'}</button>
+              </div>}
+              {order.payout && <div className="payment-detection"><div><span>Payout status</span><strong>{order.payout.status}</strong></div><div><span>Provider</span><strong>{order.payout.provider}</strong></div><div><span>Attempts</span><strong>{order.payout.attempts.length}</strong></div><div><span>Reference</span><strong>{order.payout.providerReference ? order.payout.providerReference.slice(0, 18) + '…' : 'Pending'}</strong></div></div>}
+              {payoutError && <div className="monitor-error" role="alert"><strong>Payout failed.</strong><span>{payoutError}</span>{order.status === 'PAYOUT_FAILED' && <button className="secondary" onClick={async () => { setOrder({ ...order, status: 'PAYOUT_FAILED' }) }}>Retry from the payout action</button>}</div>}
               {paymentMonitorError && <div className="monitor-error" role="alert"><strong>Payment monitor unavailable.</strong><span>{paymentMonitorError}</span><button className="secondary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced) } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>Retry check</button></div>}
               <div className="button-row"><button className="secondary" onClick={() => setStep(4)}>← Back to order</button><button className="primary" onClick={async () => { setCheckingPayment(true); setPaymentMonitorError(''); try { const result = await paymentMonitor.check(order); setPaymentCheck(result); if (result.payment) { const updated = updateTransactionPayment(order.id, toOrderPayment(result.payment), result.state as TransactionOrder['status']); if (updated) setOrder(updated) } const synced = syncTransactionStatus(order.id, result.state as TransactionOrder['status'], result.statusHistory, result.statusTimestamps); if (synced) setOrder(synced); if (!result.payment) showToast('No qualifying ZEC payment detected yet.') } catch (error) { setPaymentMonitorError(error instanceof Error ? error.message : 'Payment status is temporarily unavailable.') } finally { setCheckingPayment(false) } }}>{checkingPayment ? 'Checking…' : 'Check payment status'} <span>↻</span></button></div>
             </>}
@@ -317,7 +346,7 @@ function App() {
       </main>
 
       <section className="feature-strip"><div><span className="feature-icon">◎</span><div><strong>Guided flow</strong><p>Amount → recipient → review.</p></div></div><div><span className="feature-icon">⌁</span><div><strong>Clear validation</strong><p>Errors appear beside the field that needs attention.</p></div></div><div><span className="feature-icon">◈</span><div><strong>Privacy by design</strong><p>No unnecessary sensitive data is exposed.</p></div></div></section>
-      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 07 · Detect Incoming ZEC Payments</span></footer>
+      <footer><span>PRIVATE BILL · Zcash Privacy Developers Residency</span><span>Quest 09 · Fiat Payout Layer</span></footer>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )

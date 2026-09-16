@@ -1,10 +1,12 @@
 import http from 'node:http'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { JsonStore } from './src/store.mjs'
 import { createNodeManager } from './src/node-manager.mjs'
 import { monitorOrder } from './src/payment-monitor.mjs'
 import { TRANSACTION_STATUSES, isValidStatus } from './src/status-engine.mjs'
+import { createPayoutProvider } from './src/payout-service.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 8787)
@@ -152,6 +154,101 @@ async function routes(req, res) {
           error: e.message,
           details: e.details
         })
+      }
+    }
+
+    const payoutMatch = url.pathname.match(/^\/api\/orders\/([^/]+)\/payout$/)
+    if (req.method === 'GET' && payoutMatch) {
+      const order = store.getOrder(decodeURIComponent(payoutMatch[1]))
+      if (!order) return json(res, 404, { error: 'Order not found' })
+      return json(res, 200, { id: order.id, status: order.status, payout: order.payout ?? null })
+    }
+
+    if (req.method === 'POST' && payoutMatch) {
+      const orderId = decodeURIComponent(payoutMatch[1])
+      let order = store.getOrder(orderId)
+      if (!order) return json(res, 404, { error: 'Order not found' })
+
+      // Payouts can only start after blockchain confirmation. A retry is allowed
+      // only from PAYOUT_FAILED and creates a new attempt.
+      if (!['ZEC_CONFIRMED', 'PAYOUT_FAILED'].includes(order.status)) {
+        return json(res, 409, {
+          error: `Payout cannot start while transaction status is ${order.status}`,
+          status: order.status
+        })
+      }
+      if (!order.recipient || !['NGN', 'GHS'].includes(order.fiatCurrency)) {
+        return json(res, 422, { error: 'Payout recipient or currency is not supported' })
+      }
+      if (Number(order.fiatAmount) <= 0) {
+        return json(res, 422, { error: 'Payout amount must be positive' })
+      }
+
+      if (order.status === 'ZEC_CONFIRMED') {
+        order = await store.transitionOrder(order.id, 'PAYOUT_PROCESSING', 'Required ZEC confirmed; payout processing started')
+      } else {
+        order = await store.transitionOrder(order.id, 'PAYOUT_PROCESSING', 'Retrying failed fiat payout')
+      }
+
+      const attemptId = `PA-${crypto.randomUUID().replaceAll('-', '').slice(0, 20).toUpperCase()}`
+      const requestedAt = new Date().toISOString()
+      const provider = createPayoutProvider()
+      await store.recordPayoutAttempt(order.id, {
+        attemptId,
+        provider: process.env.PAYOUT_PROVIDER || 'mock',
+        status: 'PROCESSING',
+        requestedAt,
+        recipient: order.recipient
+      })
+
+      try {
+        const result = await provider.sendPayout({
+          orderId: order.id,
+          currency: order.fiatCurrency,
+          amount: order.fiatAmount,
+          recipient: order.recipient
+        })
+        const completedAt = new Date().toISOString()
+        await store.updatePayout(order.id, {
+          status: 'SENT',
+          provider: result.provider,
+          providerReference: result.providerReference,
+          lastAttemptId: attemptId,
+          sentAt: completedAt
+        })
+        await store.recordPayoutAttempt(order.id, {
+          attemptId,
+          provider: result.provider,
+          providerReference: result.providerReference,
+          status: 'SENT',
+          requestedAt,
+          completedAt,
+          recipient: order.recipient
+        })
+        order = await store.transitionOrder(order.id, 'FIAT_SENT', `Payout sent by ${result.provider}`)
+        order = await store.transitionOrder(order.id, 'COMPLETED', 'Fiat payout confirmed by provider')
+        return json(res, 200, { ok: true, order })
+      } catch (e) {
+        const failedAt = new Date().toISOString()
+        await store.updatePayout(order.id, {
+          status: 'FAILED',
+          provider: process.env.PAYOUT_PROVIDER || 'mock',
+          lastAttemptId: attemptId,
+          failedAt,
+          error: e.message
+        })
+        await store.recordPayoutAttempt(order.id, {
+          attemptId,
+          provider: process.env.PAYOUT_PROVIDER || 'mock',
+          providerReference: e.details?.providerReference,
+          status: 'FAILED',
+          requestedAt,
+          completedAt: failedAt,
+          error: e.message,
+          recipient: order.recipient
+        })
+        order = await store.transitionOrder(order.id, 'PAYOUT_FAILED', 'Fiat payout provider rejected or failed the payout')
+        return json(res, 502, { ok: false, order, error: e.message, details: e.details })
       }
     }
 

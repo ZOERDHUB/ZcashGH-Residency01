@@ -101,6 +101,46 @@ export class JsonStore {
 
   hasProcessed(key) { return Boolean(this.data.processedPayments[key]) }
 
+  hasPayoutAttempt(orderId, attemptId) {
+    const order = this.getOrder(orderId)
+    return Boolean(order?.payout?.attempts?.some(attempt => attempt.attemptId === attemptId))
+  }
+
+  async recordPayoutAttempt(orderId, attempt) {
+    const order = this.getOrder(orderId)
+    if (!order) throw new Error('Order not found')
+    order.payout = order.payout || {
+      currency: order.fiatCurrency,
+      amount: Number(order.fiatAmount),
+      provider: attempt.provider,
+      status: attempt.status,
+      attempts: [],
+      createdAt: now(),
+      updatedAt: now()
+    }
+    order.payout.attempts = Array.isArray(order.payout.attempts) ? order.payout.attempts : []
+    const existingIndex = order.payout.attempts.findIndex(item => item.attemptId === attempt.attemptId)
+    if (existingIndex >= 0) {
+      order.payout.attempts[existingIndex] = { ...order.payout.attempts[existingIndex], ...attempt }
+    } else {
+      order.payout.attempts.push(attempt)
+    }
+    order.payout.status = attempt.status
+    order.payout.provider = attempt.provider
+    if (attempt.providerReference) order.payout.providerReference = attempt.providerReference
+    order.payout.updatedAt = now()
+    await this.save()
+    return order
+  }
+
+  async updatePayout(orderId, patch) {
+    const order = this.getOrder(orderId)
+    if (!order) throw new Error('Order not found')
+    order.payout = { ...(order.payout || {}), ...patch, updatedAt: now() }
+    await this.save()
+    return order
+  }
+
   async recordPayment(key, payment) {
     if (this.hasProcessed(key)) return false
     this.data.processedPayments[key] = payment
