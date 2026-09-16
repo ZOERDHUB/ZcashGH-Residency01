@@ -1,0 +1,110 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { assertValidTransition, isValidStatus } from './status-engine.mjs'
+
+function now() { return new Date().toISOString() }
+
+function migrateStatus(status) {
+  const map = {
+    PAYMENT_DETECTED: 'ZEC_DETECTED',
+    PAYMENT_UNDERPAID: 'UNDERPAID',
+    COMPLETED: 'ZEC_CONFIRMED',
+  }
+  return map[status] ?? status
+}
+
+function normalizeOrder(order) {
+  const createdAt = order.createdAt || now()
+  const migratedStatus = migrateStatus(order.status || 'CREATED')
+  const status = isValidStatus(migratedStatus) ? migratedStatus : 'CREATED'
+  const history = Array.isArray(order.statusHistory) && order.statusHistory.length
+    ? order.statusHistory
+    : [{ from: null, to: status, at: createdAt, reason: 'Initial transaction status' }]
+  const timestamps = order.statusTimestamps && typeof order.statusTimestamps === 'object'
+    ? order.statusTimestamps
+    : { [status]: history[history.length - 1]?.at || createdAt }
+
+  return {
+    ...order,
+    status,
+    createdAt,
+    statusHistory: history,
+    statusTimestamps: timestamps,
+  }
+}
+
+export class JsonStore {
+  constructor(file) { this.file = path.resolve(file); this.data = { orders: {}, processedPayments: {} } }
+
+  async init() {
+    await fs.mkdir(path.dirname(this.file), { recursive: true })
+    try {
+      const parsed = JSON.parse(await fs.readFile(this.file, 'utf8'))
+      this.data = {
+        orders: parsed.orders && typeof parsed.orders === 'object' ? parsed.orders : {},
+        processedPayments: parsed.processedPayments && typeof parsed.processedPayments === 'object' ? parsed.processedPayments : {}
+      }
+      let changed = false
+      for (const [id, rawOrder] of Object.entries(this.data.orders)) {
+        const normalized = normalizeOrder(rawOrder)
+        if (JSON.stringify(normalized) !== JSON.stringify(rawOrder)) {
+          this.data.orders[id] = normalized
+          changed = true
+        }
+      }
+      if (changed) await this.save()
+    } catch {
+      await this.save()
+    }
+  }
+
+  async save() { await fs.writeFile(this.file, JSON.stringify(this.data, null, 2)) }
+  getOrder(id) { return this.data.orders[id] ?? null }
+  listOrders() { return Object.values(this.data.orders) }
+
+  async createOrder(order) {
+    if (this.getOrder(order.id)) throw new Error('Order already exists')
+    const createdAt = order.createdAt || now()
+    const normalized = {
+      ...order,
+      status: 'CREATED',
+      createdAt,
+      statusHistory: [{ from: null, to: 'CREATED', at: createdAt, reason: 'Transaction created' }],
+      statusTimestamps: { CREATED: createdAt }
+    }
+    this.data.orders[order.id] = normalized
+    await this.save()
+    return normalized
+  }
+
+  async updateOrder(id, patch) {
+    const order = this.getOrder(id)
+    if (!order) throw new Error('Order not found')
+    Object.assign(order, patch)
+    await this.save()
+    return order
+  }
+
+  async transitionOrder(id, to, reason = 'Status updated') {
+    const order = this.getOrder(id)
+    if (!order) throw new Error('Order not found')
+    assertValidTransition(order.status, to)
+    const at = now()
+    const from = order.status
+    order.status = to
+    order.statusHistory = Array.isArray(order.statusHistory) ? order.statusHistory : []
+    order.statusHistory.push({ from, to, at, reason })
+    order.statusTimestamps = { ...(order.statusTimestamps || {}), [to]: at }
+    await this.save()
+    return order
+  }
+
+  hasProcessed(key) { return Boolean(this.data.processedPayments[key]) }
+
+  async recordPayment(key, payment) {
+    if (this.hasProcessed(key)) return false
+    this.data.processedPayments[key] = payment
+    await this.save()
+    return true
+  }
+}
