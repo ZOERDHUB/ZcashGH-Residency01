@@ -1,21 +1,42 @@
+import { canTransition } from './status-engine.mjs'
+
 export const STATES = [
+  'CREATED',
   'AWAITING_ZEC',
-  'PAYMENT_DETECTED',
+  'ZEC_DETECTED',
   'CONFIRMING',
-  'CONFIRMED',
-  'PAYMENT_UNDERPAID',
-  'EXPIRED'
+  'ZEC_CONFIRMED',
+  'PAYOUT_PROCESSING',
+  'FIAT_SENT',
+  'COMPLETED',
+  'EXPIRED',
+  'UNDERPAID',
+  'OVERPAID',
+  'PAYOUT_FAILED',
+  'CANCELLED'
 ]
 
 const EPSILON = 1e-12
 
-export function stateFor({ receivedZec, confirmedZec, requiredZec, pendingPayment, requiredConfirmations, expired }) {
+export function stateFor({ receivedZec, confirmedZec, requiredZec, pendingPayment, expired }) {
   if (receivedZec <= EPSILON && expired) return 'EXPIRED'
   if (receivedZec <= EPSILON) return 'AWAITING_ZEC'
-  if (confirmedZec + EPSILON >= requiredZec) return 'CONFIRMED'
+  if (receivedZec > requiredZec + EPSILON) return 'OVERPAID'
+  if (confirmedZec + EPSILON >= requiredZec) return 'ZEC_CONFIRMED'
   if (pendingPayment && receivedZec + EPSILON >= requiredZec) return 'CONFIRMING'
-  if (receivedZec + EPSILON < requiredZec) return 'PAYMENT_UNDERPAID'
+  if (receivedZec + EPSILON < requiredZec) return 'UNDERPAID'
   return 'CONFIRMING'
+}
+
+function isPaymentLifecycleStatus(status) {
+  return ['CREATED', 'AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'UNDERPAID', 'OVERPAID'].includes(status)
+}
+
+async function moveStatus(store, order, desired, reason) {
+  if (order.status === desired) return order
+  if (!isPaymentLifecycleStatus(order.status)) return order
+  if (!canTransition(order.status, desired)) return order
+  return store.transitionOrder(order.id, desired, reason)
 }
 
 export async function monitorOrder(store, manager, order, requiredConfirmations) {
@@ -43,7 +64,7 @@ export async function monitorOrder(store, manager, order, requiredConfirmations)
   const pendingPayment = relevant.some(payment => Number(payment.confirmations || 0) < requiredConfirmations)
   const latest = relevant[0] ?? null
   const expired = order.expiresAt ? Date.now() > Date.parse(order.expiresAt) : false
-  const state = stateFor({
+  const desired = stateFor({
     receivedZec,
     confirmedZec,
     requiredZec: Number(order.requiredZec),
@@ -52,34 +73,69 @@ export async function monitorOrder(store, manager, order, requiredConfirmations)
     expired
   })
 
-  const orderStatus = state === 'CONFIRMED' ? 'COMPLETED' : state
+  let current = store.getOrder(order.id) || order
+
+  // Record the observable detection event before advancing to the more specific
+  // payment state. This preserves the required lifecycle:
+  // AWAITING_ZEC -> ZEC_DETECTED -> CONFIRMING/ZEC_CONFIRMED/UNDERPAID/OVERPAID.
+  if (relevant.length && current.status === 'AWAITING_ZEC') {
+    current = await moveStatus(store, current, 'ZEC_DETECTED', 'On-chain ZEC payment detected')
+  }
+
+  const transitionReason =
+    desired === 'CONFIRMING' ? `Required ZEC received; waiting for ${requiredConfirmations} confirmations`
+      : desired === 'ZEC_CONFIRMED' ? `Required ZEC confirmed with ${requiredConfirmations} confirmations`
+      : desired === 'UNDERPAID' ? 'Detected ZEC amount is below the required amount'
+      : desired === 'OVERPAID' ? 'Detected ZEC amount exceeds the required amount'
+      : desired === 'EXPIRED' ? 'Order expired without a payment'
+      : 'Payment status updated'
+
+  if (desired === 'ZEC_CONFIRMED' && current.status === 'ZEC_DETECTED') {
+    current = await moveStatus(
+      store,
+      current,
+      'CONFIRMING',
+      `Required ZEC received; waiting for ${requiredConfirmations} confirmations`
+    )
+  }
+  current = await moveStatus(store, current, desired, transitionReason)
+
+  // A detected payment with insufficient confirmations is explicitly CONFIRMING.
+  // A payment below the required amount is UNDERPAID until another payment is observed.
+  // ZEC_CONFIRMED is intentionally not COMPLETED: payout states belong to later quests.
+
+  const status = current.status
   await store.updateOrder(order.id, {
-    status: orderStatus,
     payment: latest
       ? {
           txid: latest.txid,
           receivedZec,
+          confirmedZec,
           confirmations: latest.confirmations,
           requiredConfirmations,
           detectedAt: new Date().toISOString(),
           address: latest.address,
           node: selected.name
         }
-      : order.payment
+      : current.payment
   })
 
   return {
-    state,
+    state: status,
     payment: latest
       ? {
           ...latest,
           amountZec: receivedZec,
-          confirmedZec
+          confirmedZec,
+          requiredConfirmations,
+          detectedAt: current.payment?.detectedAt ?? new Date().toISOString()
         }
       : null,
     checkedAt: new Date().toISOString(),
     source: selected.name,
     network: manager.network,
+    statusHistory: current.statusHistory,
+    statusTimestamps: current.statusTimestamps,
     nodeErrors: selected.errors.length ? selected.errors : undefined
   }
 }

@@ -1,6 +1,7 @@
 import type { Currency } from './conversion'
+import type { TransactionStatus } from './status-engine'
 
-export type OrderStatus = 'AWAITING_ZEC' | 'PAYMENT_DETECTED' | 'CONFIRMING' | 'COMPLETED' | 'PAYMENT_UNDERPAID' | 'EXPIRED' | 'CANCELLED'
+export type OrderStatus = TransactionStatus
 
 export type RecipientPaymentInfo = {
   providerName: string
@@ -19,6 +20,8 @@ export type TransactionOrder = {
   requiredZec: number
   recipient: RecipientPaymentInfo
   status: OrderStatus
+  statusHistory?: Array<{ from: OrderStatus | null; to: OrderStatus; at: string; reason: string }>
+  statusTimestamps?: Partial<Record<OrderStatus, string>>
   createdAt: string
   expiresAt: string
   depositAddress?: string
@@ -89,6 +92,26 @@ export function updateTransactionPayment(id: string, payment: NonNullable<Transa
   if (existing.payment && existing.payment.txid !== payment.txid) return existing
 
   const updated = { ...existing, payment, status }
+  orders[index] = updated
+  writeOrders(orders)
+  return updated
+}
+
+export function syncTransactionStatus(
+  id: string,
+  status: OrderStatus,
+  statusHistory?: TransactionOrder['statusHistory'],
+  statusTimestamps?: TransactionOrder['statusTimestamps'],
+) {
+  const orders = readOrders()
+  const index = orders.findIndex(order => order.id === id)
+  if (index < 0) return null
+  const updated = {
+    ...orders[index],
+    status,
+    ...(statusHistory ? { statusHistory } : {}),
+    ...(statusTimestamps ? { statusTimestamps } : {}),
+  }
   orders[index] = updated
   writeOrders(orders)
   return updated
