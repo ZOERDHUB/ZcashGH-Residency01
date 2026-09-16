@@ -99,6 +99,32 @@ export class JsonStore {
     return order
   }
 
+
+  async recordError(id, error) {
+    const order = this.getOrder(id)
+    if (!order) throw new Error('Order not found')
+    const at = error.at || now()
+    order.lastError = { ...error, at }
+    order.errorHistory = Array.isArray(order.errorHistory) ? order.errorHistory : []
+    const previous = order.errorHistory[order.errorHistory.length - 1]
+    if (!previous || previous.code !== order.lastError.code || previous.message !== order.lastError.message) {
+      order.errorHistory.push(order.lastError)
+    }
+    if (order.errorHistory.length > 20) order.errorHistory = order.errorHistory.slice(-20)
+    await this.save()
+    return order
+  }
+
+  async clearError(id) {
+    const order = this.getOrder(id)
+    if (!order) throw new Error('Order not found')
+    if (order.lastError) {
+      order.lastError = null
+      await this.save()
+    }
+    return order
+  }
+
   hasProcessed(key) { return Boolean(this.data.processedPayments[key]) }
 
   hasPayoutAttempt(orderId, attemptId) {

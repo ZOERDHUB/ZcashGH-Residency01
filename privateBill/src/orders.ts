@@ -48,6 +48,8 @@ export type TransactionOrder = {
     createdAt: string
     updatedAt: string
   }
+  lastError?: { code: string; message: string; retryable: boolean; at: string; details?: unknown } | null
+  errorHistory?: Array<{ code: string; message: string; retryable: boolean; at: string; details?: unknown }>
   payment?: {
     txid: string
     receivedZec: number
