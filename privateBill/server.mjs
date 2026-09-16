@@ -7,6 +7,7 @@ import { createNodeManager } from './src/node-manager.mjs'
 import { monitorOrder } from './src/payment-monitor.mjs'
 import { TRANSACTION_STATUSES, isValidStatus } from './src/status-engine.mjs'
 import { createPayoutProvider } from './src/payout-service.mjs'
+import { ERROR_CODES, makeError } from './src/error-codes.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 8787)
@@ -15,6 +16,7 @@ const CONFIRMATIONS = Number(process.env.ZCASH_REQUIRED_CONFIRMATIONS || 3)
 const ACTIVE_NETWORK = (process.env.PRIVATE_BILL_NETWORK || 'testnet').toLowerCase()
 const store = new JsonStore(DB)
 await store.init()
+const payoutLocks = new Set()
 
 function json(res, status, body) {
   res.writeHead(status, {
@@ -42,12 +44,19 @@ function validateOrder(input) {
   for (const key of ['id', 'fiatCurrency', 'fiatAmount', 'requiredZec', 'recipient', 'depositAddress']) {
     if (!input[key]) throw new Error(`Missing order field: ${key}`)
   }
-  if (!Number.isFinite(Number(input.requiredZec)) || Number(input.requiredZec) <= 0) {
-    throw new Error('requiredZec must be positive')
+  if (!['NGN', 'GHS'].includes(input.fiatCurrency)) throw new Error('Unsupported fiat currency')
+  if (!Number.isFinite(Number(input.fiatAmount)) || Number(input.fiatAmount) <= 0) throw new Error('fiatAmount must be positive')
+  if (!Number.isFinite(Number(input.requiredZec)) || Number(input.requiredZec) <= 0) throw new Error('requiredZec must be positive')
+  if (typeof input.depositAddress !== 'string' || input.depositAddress.length < 20) throw new Error('depositAddress looks invalid')
+  const r = input.recipient
+  if (!r || typeof r !== 'object') throw new Error('recipient information is required')
+  for (const key of ['providerName', 'providerCode', 'accountNumber', 'accountName', 'country', 'currency']) {
+    if (!String(r[key] ?? '').trim()) throw new Error(`Invalid recipient information: ${key}`)
   }
-  if (typeof input.depositAddress !== 'string' || input.depositAddress.length < 20) {
-    throw new Error('depositAddress looks invalid')
-  }
+  if (!['NGN', 'GHS'].includes(r.currency) || r.currency !== input.fiatCurrency) throw new Error('Recipient currency does not match payout currency')
+  if (r.country !== (input.fiatCurrency === 'NGN' ? 'Nigeria' : 'Ghana')) throw new Error('Recipient country does not match payout currency')
+  if (!/^[A-Za-z0-9\- ]{6,20}$/.test(String(r.accountNumber).trim())) throw new Error('Invalid recipient account number')
+  if (String(r.accountName).trim().length < 2) throw new Error('Invalid recipient account name')
 }
 
 function validateTransitionBody(input) {
@@ -86,7 +95,12 @@ async function routes(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/orders') {
       const input = await body(req)
-      validateOrder(input)
+      try {
+        validateOrder(input)
+      } catch (e) {
+        const invalid = makeError(ERROR_CODES.INVALID_RECIPIENT, e.message, { retryable: false })
+        return json(res, 422, { ok: false, error: invalid.message, errorCode: invalid.code, retryable: invalid.retryable })
+      }
       const createdAt = input.createdAt || new Date().toISOString()
       const order = await store.createOrder({
         ...input,
@@ -112,7 +126,9 @@ async function routes(req, res) {
         id: order.id,
         status: order.status,
         statusHistory: order.statusHistory || [],
-        statusTimestamps: order.statusTimestamps || {}
+        statusTimestamps: order.statusTimestamps || {},
+        lastError: order.lastError || null,
+        errorHistory: order.errorHistory || []
       })
     }
 
@@ -143,6 +159,7 @@ async function routes(req, res) {
         const result = await monitorOrder(store, manager, order, CONFIRMATIONS)
         return json(res, 200, result)
       } catch (e) {
+        const transient = makeError(ERROR_CODES.ZCASH_NETWORK_UNAVAILABLE, 'Zcash node or network is temporarily unavailable. The transaction state was not advanced.', { retryable: true, details: e.details })
         return json(res, 503, {
           state: order.status,
           payment: order.payment ?? null,
@@ -151,23 +168,45 @@ async function routes(req, res) {
           network: ACTIVE_NETWORK,
           statusHistory: order.statusHistory || [],
           statusTimestamps: order.statusTimestamps || {},
-          error: e.message,
+          error: transient.message,
+          errorCode: transient.code,
+          retryable: transient.retryable,
           details: e.details
         })
       }
+    }
+
+    const cancelMatch = url.pathname.match(/^\/api\/orders\/([^/]+)\/cancel$/)
+    if (req.method === 'POST' && cancelMatch) {
+      const orderId = decodeURIComponent(cancelMatch[1])
+      const order = store.getOrder(orderId)
+      if (!order) return json(res, 404, { error: 'Order not found' })
+      if (!['CREATED', 'AWAITING_ZEC', 'ZEC_DETECTED', 'CONFIRMING', 'UNDERPAID', 'OVERPAID'].includes(order.status)) {
+        return json(res, 409, { error: `Transaction cannot be cancelled from ${order.status}`, status: order.status })
+      }
+      const updated = await store.transitionOrder(orderId, 'CANCELLED', 'Cancelled by user')
+      const cancelled = makeError(ERROR_CODES.CANCELLED, 'This transaction was cancelled. No payout can be initiated.', { retryable: false })
+      await store.recordError(orderId, cancelled)
+      return json(res, 200, { ok: true, order: updated })
     }
 
     const payoutMatch = url.pathname.match(/^\/api\/orders\/([^/]+)\/payout$/)
     if (req.method === 'GET' && payoutMatch) {
       const order = store.getOrder(decodeURIComponent(payoutMatch[1]))
       if (!order) return json(res, 404, { error: 'Order not found' })
-      return json(res, 200, { id: order.id, status: order.status, payout: order.payout ?? null })
+      return json(res, 200, { id: order.id, status: order.status, payout: order.payout ?? null, lastError: order.lastError || null })
     }
 
     if (req.method === 'POST' && payoutMatch) {
       const orderId = decodeURIComponent(payoutMatch[1])
       let order = store.getOrder(orderId)
       if (!order) return json(res, 404, { error: 'Order not found' })
+
+      if (payoutLocks.has(orderId) || order.status === 'PAYOUT_PROCESSING') {
+        const duplicate = makeError(ERROR_CODES.DUPLICATE_PROCESSING, 'A payout attempt is already being processed for this transaction. Do not submit another payout request.', { retryable: true })
+        await store.recordError(orderId, duplicate)
+        return json(res, 409, { ok: false, error: duplicate.message, errorCode: duplicate.code, retryable: duplicate.retryable, status: order.status })
+      }
 
       // Payouts can only start after blockchain confirmation. A retry is allowed
       // only from PAYOUT_FAILED and creates a new attempt.
@@ -177,13 +216,19 @@ async function routes(req, res) {
           status: order.status
         })
       }
-      if (!order.recipient || !['NGN', 'GHS'].includes(order.fiatCurrency)) {
-        return json(res, 422, { error: 'Payout recipient or currency is not supported' })
+      try { validateOrder({ ...order, id: order.id }) } catch (e) {
+        const invalid = makeError(ERROR_CODES.INVALID_RECIPIENT, e.message, { retryable: false })
+        await store.recordError(orderId, invalid)
+        return json(res, 422, { ok: false, error: invalid.message, errorCode: invalid.code, retryable: invalid.retryable, status: order.status })
       }
       if (Number(order.fiatAmount) <= 0) {
-        return json(res, 422, { error: 'Payout amount must be positive' })
+        const invalid = makeError(ERROR_CODES.INVALID_RECIPIENT, 'Payout amount must be positive.', { retryable: false })
+        await store.recordError(orderId, invalid)
+        return json(res, 422, { ok: false, error: invalid.message, errorCode: invalid.code, retryable: invalid.retryable, status: order.status })
       }
 
+      payoutLocks.add(orderId)
+      try {
       if (order.status === 'ZEC_CONFIRMED') {
         order = await store.transitionOrder(order.id, 'PAYOUT_PROCESSING', 'Required ZEC confirmed; payout processing started')
       } else {
@@ -227,6 +272,7 @@ async function routes(req, res) {
         })
         order = await store.transitionOrder(order.id, 'FIAT_SENT', `Payout sent by ${result.provider}`)
         order = await store.transitionOrder(order.id, 'COMPLETED', 'Fiat payout confirmed by provider')
+        await store.clearError(order.id)
         return json(res, 200, { ok: true, order })
       } catch (e) {
         const failedAt = new Date().toISOString()
@@ -247,8 +293,18 @@ async function routes(req, res) {
           error: e.message,
           recipient: order.recipient
         })
+        const payoutError = makeError(ERROR_CODES.PAYOUT_FAILED, e.message, { retryable: true, details: e.details })
+        await store.recordError(order.id, payoutError)
         order = await store.transitionOrder(order.id, 'PAYOUT_FAILED', 'Fiat payout provider rejected or failed the payout')
-        return json(res, 502, { ok: false, order, error: e.message, details: e.details })
+        return json(res, 502, { ok: false, order, error: e.message, errorCode: payoutError.code, retryable: payoutError.retryable, details: e.details })
+      } finally {
+        payoutLocks.delete(orderId)
+      }
+      } catch (e) {
+        payoutLocks.delete(orderId)
+        throw e
+      } finally {
+        payoutLocks.delete(orderId)
       }
     }
 

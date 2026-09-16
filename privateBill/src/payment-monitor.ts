@@ -23,6 +23,9 @@ export type PaymentCheck = {
   source: NodeName | 'unavailable'
   network: NetworkName
   error?: string
+  errorCode?: string
+  nodeErrors?: Array<{ node: string; error: string }>
+  retryable?: boolean
   statusHistory?: TransactionOrder['statusHistory']
   statusTimestamps?: TransactionOrder['statusTimestamps']
 }
@@ -52,6 +55,8 @@ export class BackendPaymentMonitor implements PaymentMonitor {
       source: data.source === 'zebra' || data.source === 'zakura' ? data.source : 'unavailable',
       network: data.network === 'mainnet' || data.network === 'regtest' ? data.network : 'testnet',
       error: data.error,
+      errorCode: data.errorCode,
+      retryable: data.retryable,
       statusHistory: data.statusHistory,
       statusTimestamps: data.statusTimestamps,
     }

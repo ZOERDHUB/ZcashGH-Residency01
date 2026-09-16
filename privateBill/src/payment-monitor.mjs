@@ -1,4 +1,5 @@
 import { canTransition } from './status-engine.mjs'
+import { ERROR_CODES, makeError } from './error-codes.mjs'
 
 export const STATES = [
   'CREATED',
@@ -19,7 +20,10 @@ export const STATES = [
 const EPSILON = 1e-12
 
 export function stateFor({ receivedZec, confirmedZec, requiredZec, pendingPayment, expired }) {
-  if (receivedZec <= EPSILON && expired) return 'EXPIRED'
+  // Once an order expires, never silently accept a late payment as a valid
+  // funding event. This prevents a late on-chain payment from moving an order
+  // into payout/completed states without an explicit recovery flow.
+  if (expired) return 'EXPIRED'
   if (receivedZec <= EPSILON) return 'AWAITING_ZEC'
   if (receivedZec > requiredZec + EPSILON) return 'OVERPAID'
   if (confirmedZec + EPSILON >= requiredZec) return 'ZEC_CONFIRMED'
@@ -105,6 +109,16 @@ export async function monitorOrder(store, manager, order, requiredConfirmations)
   // ZEC_CONFIRMED is intentionally not COMPLETED: payout states belong to later quests.
 
   const status = current.status
+  const error = status === 'UNDERPAID'
+    ? makeError(ERROR_CODES.UNDERPAYMENT, `Received ${receivedZec.toFixed(6)} ZEC, but ${Number(order.requiredZec).toFixed(6)} ZEC is required.`, { retryable: true })
+    : status === 'OVERPAID'
+      ? makeError(ERROR_CODES.OVERPAYMENT, `Received ${receivedZec.toFixed(6)} ZEC, which is more than the required ${Number(order.requiredZec).toFixed(6)} ZEC.`, { retryable: false })
+      : status === 'EXPIRED'
+        ? makeError(ERROR_CODES.TRANSACTION_EXPIRED, 'This transaction expired before valid funding was confirmed.', { retryable: false })
+        : null
+  if (error) await store.recordError(order.id, error)
+  else if (status !== 'PAYOUT_FAILED' && status !== 'CANCELLED') await store.clearError(order.id)
+
   await store.updateOrder(order.id, {
     payment: latest
       ? {
@@ -136,6 +150,13 @@ export async function monitorOrder(store, manager, order, requiredConfirmations)
     network: manager.network,
     statusHistory: current.statusHistory,
     statusTimestamps: current.statusTimestamps,
-    nodeErrors: selected.errors.length ? selected.errors : undefined
+    nodeErrors: selected.errors.length ? selected.errors : undefined,
+    errorCode: status === 'UNDERPAID' ? ERROR_CODES.UNDERPAYMENT : status === 'OVERPAID' ? ERROR_CODES.OVERPAYMENT : status === 'EXPIRED' ? ERROR_CODES.TRANSACTION_EXPIRED : status === 'AWAITING_ZEC' ? ERROR_CODES.PAYMENT_NOT_DETECTED : undefined,
+    retryable: status === 'UNDERPAID' || status === 'AWAITING_ZEC',
+    error: status === 'AWAITING_ZEC' ? makeError(ERROR_CODES.PAYMENT_NOT_DETECTED, 'No qualifying ZEC payment has been detected yet.', { retryable: true }).message
+      : status === 'UNDERPAID' ? makeError(ERROR_CODES.UNDERPAYMENT, `Received ${receivedZec.toFixed(6)} ZEC, but ${Number(order.requiredZec).toFixed(6)} ZEC is required.`, { retryable: true }).message
+      : status === 'OVERPAID' ? makeError(ERROR_CODES.OVERPAYMENT, `Received ${receivedZec.toFixed(6)} ZEC, which is more than the required ${Number(order.requiredZec).toFixed(6)} ZEC.`, { retryable: false }).message
+      : status === 'EXPIRED' ? makeError(ERROR_CODES.TRANSACTION_EXPIRED, 'This transaction expired before valid funding was confirmed.', { retryable: false }).message
+      : undefined
   }
 }

@@ -6,6 +6,7 @@ export type TransactionTracking = {
   status: TransactionStatus
   statusHistory: NonNullable<TransactionOrder['statusHistory']>
   statusTimestamps: NonNullable<TransactionOrder['statusTimestamps']>
+  lastError?: TransactionOrder['lastError']
 }
 
 export async function fetchTransactionTracking(orderId: string): Promise<TransactionTracking> {
@@ -18,6 +19,7 @@ export async function fetchTransactionTracking(orderId: string): Promise<Transac
     status: payload.status as TransactionStatus,
     statusHistory: payload.statusHistory || [],
     statusTimestamps: payload.statusTimestamps || {},
+    lastError: payload.lastError || null,
   }
 }
 
