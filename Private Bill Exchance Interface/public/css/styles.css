@@ -1,0 +1,321 @@
+:root {
+  --bg: #0b0f1a;
+  --panel: #141b2e;
+  --panel-border: #232c45;
+  --accent: #e3a438;
+  --accent-dim: #8a6a2e;
+  --teal: #3fb8af;
+  --text: #edeff5;
+  --text-muted: #8792a8;
+  --danger: #e06a6a;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(227, 164, 56, 0.10), transparent 55%),
+    var(--bg);
+}
+
+.panel {
+  width: 100%;
+  max-width: 440px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 36px 32px 32px;
+}
+
+.panel--wide {
+  max-width: 620px;
+}
+
+.step-cue {
+  margin: 0 0 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1.25;
+  margin: 0 0 10px;
+  color: var(--text);
+}
+
+.subtitle {
+  margin: 0 0 28px;
+  color: var(--text-muted);
+  font-size: 14.5px;
+  line-height: 1.55;
+  max-width: 34ch;
+}
+
+.field-group {
+  margin-bottom: 22px;
+}
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* Send / Receive dual panel, inspired by the two-sided amount layout
+   common to crypto exchange widgets (e.g. ff.io) -- own colors & copy. */
+.exchange-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: stretch;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.exchange-box {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+  background: rgba(255, 255, 255, 0.015);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.exchange-box--active {
+  border-color: var(--accent-dim);
+}
+
+.exchange-box-label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.exchange-box-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.exchange-box-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--text);
+}
+
+.exchange-box-currency {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--teal);
+  font-weight: 500;
+}
+
+.exchange-box-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.exchange-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.rate-line {
+  text-align: center;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+@media (max-width: 560px) {
+  .exchange-grid {
+    grid-template-columns: 1fr;
+  }
+  .exchange-divider {
+    transform: rotate(90deg);
+    padding: 2px 0;
+  }
+}
+
+.currency-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.currency-option {
+  font-family: var(--font-body);
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 10px;
+  text-align: left;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.currency-option:hover {
+  border-color: var(--accent-dim);
+}
+
+.currency-option.is-active {
+  border-color: var(--accent);
+  background: rgba(227, 164, 56, 0.08);
+}
+
+.currency-sub {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.amount-input-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 4px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.15s ease;
+}
+
+.amount-input-wrap:focus-within {
+  border-color: var(--accent);
+}
+
+.amount-symbol {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 18px;
+  margin-right: 8px;
+}
+
+.amount-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 22px;
+  padding: 12px 0;
+  min-width: 0;
+}
+
+.amount-input::placeholder {
+  color: #4b566f;
+}
+
+.field-error {
+  margin: 8px 2px 0;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.funding-note {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(63, 184, 175, 0.07);
+  border: 1px solid rgba(63, 184, 175, 0.18);
+  margin-bottom: 28px;
+}
+
+.funding-note-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--teal);
+  margin-top: 6px;
+}
+
+.funding-note-title {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.funding-note-body {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.continue-btn {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #1a1305;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.continue-btn:hover:not(:disabled) {
+  background: #f0b654;
+}
+
+.continue-btn:disabled {
+  background: #33394a;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.continue-btn:focus-visible,
+.currency-option:focus-visible,
+.amount-input:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .continue-btn,
+  .currency-option,
+  .amount-input-wrap {
+    transition: none;
+  }
+}
